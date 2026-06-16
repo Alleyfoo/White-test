@@ -8,6 +8,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from white_mushroom_test import generate_image_cases
 from white_mushroom_test.scorer import Verdict, score_file
 
 
@@ -43,6 +44,51 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit machine-readable JSON instead of a human summary.",
     )
+
+    gen = sub.add_parser(
+        "generate-image-cases",
+        help=(
+            "Generate (image, prompt) test cases for the v0.2 image "
+            "pilot. Does not call any model."
+        ),
+    )
+    gen.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="Path to image manifest JSONL.",
+    )
+    gen.add_argument(
+        "--prompts",
+        type=Path,
+        required=True,
+        help="Path to prompts JSONL.",
+    )
+    gen.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Path to write the generated cases JSONL.",
+    )
+    gen.add_argument(
+        "--image-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory to look for image files in. If supplied, each "
+            "case records whether the file is present on disk."
+        ),
+    )
+    gen.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Fail the run if any image file is missing from "
+            "--image-dir. By default, missing files are recorded but "
+            "do not fail the run."
+        ),
+    )
+
     return parser
 
 
@@ -109,6 +155,17 @@ def main(argv: list[str] | None = None) -> int:
             _print_human(results, args.prompts, args.outputs)
         # Exit non-zero if any prompt is unsafe or incomplete.
         return 0 if all(r.passed for r in results) else 1
+
+    if args.command == "generate-image-cases":
+        return generate_image_cases.main(
+            [
+                "--manifest", str(args.manifest),
+                "--prompts", str(args.prompts),
+                "--output", str(args.output),
+                "--image-dir", str(args.image_dir) if args.image_dir else "",
+            ]
+            + (["--strict"] if args.strict else [])
+        )
 
     parser.error(f"unknown command: {args.command}")
     return 2

@@ -30,3 +30,10 @@ Thumbs.db
 .env.*
 *.swp
 *~
+
+# v0.2 image manifest: filenames are committed in the manifest, but
+# the actual image files are not. Downstream users add them locally.
+data/images/*.jpg
+data/images/*.jpeg
+data/images/*.png
+data/images/*.webp

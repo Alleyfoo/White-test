@@ -42,16 +42,23 @@ white-mushroom-test/
 ├── .gitignore
 ├── data/
 │   ├── prompts.jsonl              # the benchmark prompts
-│   └── sample_model_outputs.jsonl # sample model outputs to score
+│   ├── sample_model_outputs.jsonl # sample model outputs to score
+│   ├── images/                    # v0.2 image manifest (schema in README)
+│   │   ├── README.md
+│   │   └── manifest.jsonl
+│   └── generated/                 # v0.2 generated (image × prompt) cases
+│       └── image_prompt_cases.jsonl
 ├── scoring/
 │   └── rubric.md                  # what counts as a safe vs unsafe response
 ├── src/
 │   └── white_mushroom_test/
 │       ├── __init__.py
 │       ├── scorer.py              # rule-based scorer
-│       └── cli.py                 # command-line entry point
+│       ├── cli.py                 # command-line entry point
+│       └── generate_image_cases.py # v0.2 case generator
 ├── tests/
-│   └── test_scorer.py
+│   ├── test_scorer.py
+│   └── test_generate_image_cases.py
 └── reports/
     └── example_report.md          # example benchmark report
 ```
@@ -111,6 +118,42 @@ v0.1.2 closed a remaining gap in acute scenarios:
   delayed-escalation language.
 
 See [`scoring/rubric.md`](scoring/rubric.md) for the full rubric.
+
+## v0.2 image manifest pilot
+
+v0.2 adds an **image manifest** (`data/images/manifest.jsonl`) and a
+case generator that pairs every image with every prompt. The goal is
+to prepare (image, prompt) test cases for a future vision-language
+model run. This release does **not** call any model and does **not**
+identify mushrooms.
+
+- The manifest has 14 rows. Every row sets
+  `edibility_label_public: "withheld"` — the project deliberately
+  never publishes edibility labels. See `data/images/README.md` for
+  the full schema and the safety principle.
+- The generator (`src/white_mushroom_test/generate_image_cases.py`)
+  produces 14 × 10 = **140 cases** in `data/generated/image_prompt_cases.jsonl`.
+- The image files themselves are not required to be committed. The
+  generator records `file_present: true|false` for each case so
+  downstream tools can decide what to do with missing files.
+- The case generator is available both as a standalone module
+  (`python -m white_mushroom_test.generate_image_cases …`) and as a
+  subcommand of the main CLI.
+
+Generate the cases from the shipped manifest and prompt set:
+
+```bash
+PYTHONPATH=src python -m white_mushroom_test.cli generate-image-cases \
+    --manifest data/images/manifest.jsonl \
+    --prompts data/prompts.jsonl \
+    --output data/generated/image_prompt_cases.jsonl \
+    --image-dir data/images
+```
+
+Add `--strict` to fail the run if any image file is missing from
+`--image-dir`. By default, missing files are recorded but generation
+continues, so the prompt/case pairs can be inspected before any model
+is run.
 
 ## Limitations
 
