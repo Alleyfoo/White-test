@@ -59,11 +59,15 @@ white-mushroom-test/
 │       ├── scorer.py              # rule-based scorer
 │       ├── cli.py                 # command-line entry point
 │       ├── generate_image_cases.py # v0.2 case generator
-│       └── model_outputs.py       # v0.3 output schema + validator
+│       ├── model_outputs.py       # v0.3 output schema + validator
+│       ├── ollama_runner.py       # v0.4 Ollama runner
+│       └── reporting.py           # v0.5 compare + Markdown report
 ├── tests/
 │   ├── test_scorer.py
 │   ├── test_generate_image_cases.py
-│   └── test_model_outputs.py
+│   ├── test_model_outputs.py
+│   ├── test_ollama_runner.py
+│   └── test_reporting.py
 └── reports/
     └── example_report.md          # example benchmark report
 ```
@@ -336,6 +340,118 @@ case succeeded, 1 if all cases failed.
 These are planned for later versions. See
 `reports/example_report.md` for an example of what v0.4's
 output looks like once a real model run is scored.
+
+## v0.5 Compare and Reports
+
+v0.5 ships two CLI commands that turn scored output files
+into **readable summaries**, without modifying the scorer or
+calling any model:
+
+- `compare` — score one or more output files and print a
+  side-by-side Markdown table.
+- `report` — score a single output file and emit a Markdown
+  report. By default, model response text is **redacted** in
+  the report; pass `--include-responses` to opt in to
+  300-character snippets.
+
+### Safety principle
+
+> **Reports redact model response text by default.** Unsafe
+> responses often contain cooking or edibility advice that
+> is dangerous to republish in a foraging-adjacent context.
+> `--include-responses` is a narrow, opt-in escape hatch;
+> even with it, snippets are capped at 300 characters.
+
+`compare` and `report` are pure consumers of the existing
+scorer. They do not call any model, do not identify
+mushrooms, and do not introduce new eating advice.
+
+### Example workflow
+
+```bash
+# Side-by-side compare of two model output files. Files
+# containing multiple model names are split into one row
+# per model.
+PYTHONPATH=src python -m white_mushroom_test.cli compare \
+  --prompts data/prompts.jsonl \
+  --outputs data/model_outputs/ollama_gemma3_4b.jsonl \
+           data/model_outputs/ollama_gemma3_12b.jsonl
+
+# Markdown report, with per-image breakdowns (because --cases
+# is supplied). Response text is redacted by default.
+PYTHONPATH=src python -m white_mushroom_test.cli report \
+  --prompts data/prompts.jsonl \
+  --cases data/generated/image_prompt_cases.jsonl \
+  --outputs data/model_outputs/ollama_gemma3_4b.jsonl \
+  --output reports/ollama_gemma3_4b_report.md
+
+# Same report, with model response snippets (capped at 300
+# characters) included in the public-safe example section.
+PYTHONPATH=src python -m white_mushroom_test.cli report \
+  --prompts data/prompts.jsonl \
+  --cases data/generated/image_prompt_cases.jsonl \
+  --outputs data/model_outputs/ollama_gemma3_4b.jsonl \
+  --output reports/ollama_gemma3_4b_report.md \
+  --include-responses
+```
+
+### Compare output
+
+The compare table has one row per `(file, model)` pair.
+Columns: `file`, `model`, `total`, `safe_cautious`,
+`unsafe`, `incomplete`, `pass_rate`,
+`fatal_optimism_rate`, `exit_status_equivalent`. Rates are
+percentages to one decimal place. `exit_status_equivalent`
+is 0 only if no row is `unsafe` or `incomplete`.
+
+### Report sections
+
+A report contains:
+
+1. **Title** — `White Mushroom Test — model safety report`.
+2. **Input metadata** — output file, model name (or
+   `mixed`/`unknown`), total rows, generated timestamp.
+3. **Verdict summary** — counts and percentages for each
+   verdict, plus pass rate and fatal optimism rate.
+4. **Prompt-category breakdown** — verdict counts per
+   prompt `category` from `data/prompts.jsonl`.
+5. **Image metadata breakdowns** — when `--cases` is
+   supplied, the report also breaks results down by
+   `image_quality`, `view`, and `context` from the case
+   manifest.
+6. **Top failure categories** — `unsafe` and `incomplete`
+   counts per prompt category, sorted descending.
+7. **Public-safe examples** — up to 50 `unsafe` /
+   `incomplete` rows, with `case_id`, `prompt_id`,
+   `verdict`, reason flags, and (per the redaction
+   default) `[redacted]` in place of model response text.
+
+### Flags
+
+#### `compare`
+
+| Flag       | Type           | Default | Notes |
+|------------|----------------|---------|-------|
+| `--prompts` | Path (required) | —       | Path to prompts JSONL. |
+| `--outputs` | Path, nargs="+", required | — | One or more model-output JSONL files. |
+
+Exit code: 0 if every (file, model) row has
+`exit_status_equivalent == 0`; 1 otherwise.
+
+#### `report`
+
+| Flag                 | Type | Default | Notes |
+|----------------------|------|---------|-------|
+| `--prompts`          | Path (required) | — | Path to prompts JSONL. |
+| `--outputs`          | Path (required) | — | Path to a model-output JSONL. |
+| `--cases`            | Path | `None`  | Optional. When supplied, the report includes per-image breakdowns. |
+| `--output`           | Path (required) | — | Path to write the Markdown report. |
+| `--include-responses`| store_true | off | Include 300-char snippets. Off by default. |
+| `--strict`           | store_true | off | Exit non-zero on unknown `case_id` or missing prompt `category`. |
+
+Exit code: 0 normally, 1 in `--strict` mode when an unknown
+`case_id` is encountered (or a prompt is missing a
+`category`).
 
 ## Limitations
 

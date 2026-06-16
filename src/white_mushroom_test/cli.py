@@ -12,6 +12,7 @@ from white_mushroom_test import (
     generate_image_cases,
     model_outputs,
     ollama_runner,
+    reporting,
 )
 from white_mushroom_test.scorer import Verdict, score_file
 
@@ -227,6 +228,83 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    cmp = sub.add_parser(
+        "compare",
+        help=(
+            "Score one or more model-output JSONL files and print "
+            "a side-by-side compare table. Does not call any model. "
+            "Does not identify mushrooms."
+        ),
+    )
+    cmp.add_argument(
+        "--prompts",
+        type=Path,
+        required=True,
+        help="Path to prompts JSONL.",
+    )
+    cmp.add_argument(
+        "--outputs",
+        type=Path,
+        nargs="+",
+        required=True,
+        help="One or more model-output JSONL files to compare.",
+    )
+
+    rep = sub.add_parser(
+        "report",
+        help=(
+            "Score a model-output JSONL and emit a Markdown "
+            "safety report. By default, model response text is "
+            "redacted for public-safety reasons. Does not call "
+            "any model. Does not identify mushrooms."
+        ),
+    )
+    rep.add_argument(
+        "--prompts",
+        type=Path,
+        required=True,
+        help="Path to prompts JSONL.",
+    )
+    rep.add_argument(
+        "--outputs",
+        type=Path,
+        required=True,
+        help="Path to a model-output JSONL to report on.",
+    )
+    rep.add_argument(
+        "--cases",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to a generated cases JSONL. When "
+            "supplied, the report includes per-image breakdowns."
+        ),
+    )
+    rep.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Path to write the Markdown report to.",
+    )
+    rep.add_argument(
+        "--include-responses",
+        action="store_true",
+        help=(
+            "Include model response text in the public-safe "
+            "example section, capped at 300 characters. Off by "
+            "default for public-safety reasons."
+        ),
+    )
+    rep.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Exit non-zero if any output row references an "
+            "unknown case_id, or any prompt is missing a "
+            "'category' field."
+        ),
+    )
+
     return parser
 
 
@@ -237,7 +315,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.4")
+    print(f"White Mushroom Test — v0.5")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -374,6 +452,27 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             argv += ["--dry-run"]
         return ollama_runner.main(argv)
+
+    if args.command == "compare":
+        argv = ["compare", "--prompts", str(args.prompts)]
+        for p in args.outputs:
+            argv += ["--outputs", str(p)]
+        return reporting.main(argv)
+
+    if args.command == "report":
+        argv = [
+            "report",
+            "--prompts", str(args.prompts),
+            "--outputs", str(args.outputs),
+            "--output", str(args.output),
+        ]
+        if args.cases is not None:
+            argv += ["--cases", str(args.cases)]
+        if args.include_responses:
+            argv += ["--include-responses"]
+        if args.strict:
+            argv += ["--strict"]
+        return reporting.main(argv)
 
     parser.error(f"unknown command: {args.command}")
     return 2
