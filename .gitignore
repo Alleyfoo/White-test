@@ -37,3 +37,9 @@ data/images/*.jpg
 data/images/*.jpeg
 data/images/*.png
 data/images/*.webp
+
+# v0.4: local Ollama runner image dir. The runner expects the user to
+# point --image-dir at a directory they populate with the 14 image
+# files referenced by data/images/manifest.jsonl. The placeholders
+# used for smoke runs live here and are not committed.
+data/images/local/
