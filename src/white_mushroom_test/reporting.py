@@ -529,6 +529,9 @@ def build_report(
     example_rows = _build_example_rows(
         results, output_rows, cases_by_id, include_responses=include_responses
     )
+    unsafe_examples, incomplete_examples = _build_examples_split(
+        results, output_rows, cases_by_id, include_responses=include_responses
+    )
 
     return render_markdown_report(
         metadata=metadata,
@@ -539,6 +542,8 @@ def build_report(
         per_context=per_context,
         failures=failures,
         example_rows=example_rows,
+        unsafe_examples=unsafe_examples,
+        incomplete_examples=incomplete_examples,
     )
 
 
@@ -550,6 +555,12 @@ def _build_example_rows(
     include_responses: bool,
 ) -> list[dict]:
     """Build the public-safe example rows for the report.
+
+    v0.8: this helper returns a flat list of example rows.
+    Render is split into two sub-sections by verdict —
+    see :func:`_build_examples_split`. The flat form is
+    preserved for backwards-compatible callers that just
+    want every unsafe + incomplete row (capped at 50).
 
     For each ``unsafe`` or ``incomplete`` result, build a dict
     with ``case_id``, ``prompt_id``, ``verdict``,
@@ -595,29 +606,91 @@ def _build_example_rows(
     )
     out: list[dict] = []
     for r in interesting[:50]:
-        if include_responses:
-            response_text = None
-            if r.case_id and r.case_id in by_case:
-                response_text = by_case[r.case_id]
-            elif r.prompt_id in by_prompt:
-                response_text = by_prompt[r.prompt_id]
-            response = (
-                truncate_snippet(response_text)
-                if response_text is not None
-                else REDACTED_PLACEHOLDER
-            )
-        else:
-            response = REDACTED_PLACEHOLDER
         out.append(
-            {
-                "case_id": r.case_id or "",
-                "prompt_id": r.prompt_id,
-                "verdict": r.verdict.value,
-                "reason_flags": reason_flags(r),
-                "response": response,
-            }
+            _make_example_row(
+                r, by_case, by_prompt, include_responses=include_responses
+            )
         )
     return out
+
+
+def _build_examples_split(
+    results: list[ScoreResult],
+    output_rows: list[dict],
+    cases_by_id: dict[str, dict],
+    *,
+    include_responses: bool,
+    cap: int = 50,
+) -> tuple[list[dict], list[dict]]:
+    """Build two lists of public-safe example rows, one per verdict.
+
+    v0.8: split the v0.5 50-row cap into two independent
+    sub-section caps. Returns
+    ``(unsafe_rows, incomplete_rows)``, each sorted by
+    ``case_id`` / ``prompt_id`` and capped at ``cap`` rows
+    (default 50). This makes incomplete rows visible
+    alongside unsafe rows in long benchmark runs (e.g. a
+    100-case run with 30 unsafe + 30 incomplete) instead of
+    pushing 10 incomplete rows off the bottom of the report.
+    """
+    # Build a lookup: case_id -> response, then prompt_id -> response.
+    by_case: dict[str, str] = {}
+    by_prompt: dict[str, str] = {}
+    for row in output_rows:
+        response = row.get("response")
+        if not isinstance(response, str):
+            continue
+        cid = row.get("case_id")
+        if isinstance(cid, str) and cid:
+            by_case[cid] = response
+        pid = row.get("prompt_id")
+        if isinstance(pid, str) and pid:
+            by_prompt[pid] = response
+
+    unsafe_rows = [r for r in results if r.verdict is Verdict.UNSAFE]
+    unsafe_rows.sort(key=lambda r: (r.case_id or "", r.prompt_id))
+    incomplete_rows = [r for r in results if r.verdict is Verdict.INCOMPLETE]
+    incomplete_rows.sort(key=lambda r: (r.case_id or "", r.prompt_id))
+
+    unsafe_out = [
+        _make_example_row(r, by_case, by_prompt, include_responses=include_responses)
+        for r in unsafe_rows[:cap]
+    ]
+    incomplete_out = [
+        _make_example_row(r, by_case, by_prompt, include_responses=include_responses)
+        for r in incomplete_rows[:cap]
+    ]
+    return unsafe_out, incomplete_out
+
+
+def _make_example_row(
+    r: ScoreResult,
+    by_case: dict[str, str],
+    by_prompt: dict[str, str],
+    *,
+    include_responses: bool,
+) -> dict:
+    """Build a single public-safe example dict for ``r``."""
+    if include_responses:
+        response_text = None
+        if r.case_id and r.case_id in by_case:
+            response_text = by_case[r.case_id]
+        elif r.prompt_id in by_prompt:
+            response_text = by_prompt[r.prompt_id]
+        response = (
+            truncate_snippet(response_text)
+            if response_text is not None
+            else REDACTED_PLACEHOLDER
+        )
+    else:
+        response = REDACTED_PLACEHOLDER
+    return {
+        "case_id": r.case_id or "",
+        "prompt_id": r.prompt_id,
+        "verdict": r.verdict.value,
+        "reason_flags": reason_flags(r),
+        "response": response,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -665,7 +738,7 @@ def render_compare_table(summaries: list[dict]) -> str:
             + " |"
         )
     body = "\n".join(lines) if lines else "_(no rows)_"
-    return f"White Mushroom Test — v0.7 (compare)\n\n{header}\n{body}\n"
+    return f"White Mushroom Test — v0.8 (compare)\n\n{header}\n{body}\n"
 
 
 def _render_breakdown_table(
@@ -715,12 +788,22 @@ def render_markdown_report(
     per_context: dict[str, dict],
     failures: dict,
     example_rows: list[dict],
+    unsafe_examples: list[dict] | None = None,
+    incomplete_examples: list[dict] | None = None,
 ) -> str:
     """Assemble the full Markdown report from precomputed pieces.
 
     All sections are present, in the order the spec requires.
     Sections that depend on ``--cases`` show ``_(no data)`` if
     the breakdown dicts are empty.
+
+    v0.8: the public-safe examples section is split into two
+    sub-sections — ``unsafe`` and ``incomplete`` — each capped
+    at 50 rows. The v0.5 single-cap form (``example_rows``)
+    is preserved for backwards compatibility: when
+    ``unsafe_examples`` and ``incomplete_examples`` are not
+    supplied, the v0.5 behaviour is rendered (one combined
+    list of up to 50 rows).
     """
     out: list[str] = []
     # 1. Title
@@ -809,20 +892,58 @@ def render_markdown_report(
         "report. Pass `--include-responses` to the ``report`` "
         "command to opt in to 300-character snippets.\n"
     )
-    if not example_rows:
-        out.append("_No unsafe or incomplete rows to show._\n")
+    # v0.8: split the section into two sub-sections (unsafe +
+    # incomplete), each capped at 50 rows. Falls back to the
+    # v0.5 combined list when the split lists are not supplied
+    # (backwards-compatibility for direct render_markdown_report
+    # callers that still pass ``example_rows`` only).
+    if unsafe_examples is not None and incomplete_examples is not None:
+        out.append("### Public-safe examples (`unsafe`)\n")
+        if not unsafe_examples:
+            out.append("_No unsafe rows to show._\n")
+        else:
+            for row in unsafe_examples:
+                case = row["case_id"] or "(no case_id)"
+                flags = ", ".join(row["reason_flags"]) or "(none)"
+                out.append(
+                    f"- case_id: `{case}`  \n"
+                    f"  prompt_id: `{row['prompt_id']}`  \n"
+                    f"  verdict: `{row['verdict']}`  \n"
+                    f"  reason flags: {flags}  \n"
+                    f"  response: {row['response']}"
+                )
+            out.append("")
+        out.append("### Public-safe examples (`incomplete`)\n")
+        if not incomplete_examples:
+            out.append("_No incomplete rows to show._\n")
+        else:
+            for row in incomplete_examples:
+                case = row["case_id"] or "(no case_id)"
+                flags = ", ".join(row["reason_flags"]) or "(none)"
+                out.append(
+                    f"- case_id: `{case}`  \n"
+                    f"  prompt_id: `{row['prompt_id']}`  \n"
+                    f"  verdict: `{row['verdict']}`  \n"
+                    f"  reason flags: {flags}  \n"
+                    f"  response: {row['response']}"
+                )
+            out.append("")
     else:
-        for row in example_rows:
-            case = row["case_id"] or "(no case_id)"
-            flags = ", ".join(row["reason_flags"]) or "(none)"
-            out.append(
-                f"- case_id: `{case}`  \n"
-                f"  prompt_id: `{row['prompt_id']}`  \n"
-                f"  verdict: `{row['verdict']}`  \n"
-                f"  reason flags: {flags}  \n"
-                f"  response: {row['response']}"
-            )
-        out.append("")
+        # v0.5 fallback: one combined list of up to 50 rows.
+        if not example_rows:
+            out.append("_No unsafe or incomplete rows to show._\n")
+        else:
+            for row in example_rows:
+                case = row["case_id"] or "(no case_id)"
+                flags = ", ".join(row["reason_flags"]) or "(none)"
+                out.append(
+                    f"- case_id: `{case}`  \n"
+                    f"  prompt_id: `{row['prompt_id']}`  \n"
+                    f"  verdict: `{row['verdict']}`  \n"
+                    f"  reason flags: {flags}  \n"
+                    f"  response: {row['response']}"
+                )
+            out.append("")
     return "\n".join(out)
 
 
@@ -964,7 +1085,7 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(md, encoding="utf-8")
     print(
-        f"White Mushroom Test — v0.7\n"
+        f"White Mushroom Test — v0.8\n"
         f"  outputs:  {args.outputs}\n"
         f"  cases:    {args.cases or '(none — no per-image breakdown)'}\n"
         f"  report:   {args.output}\n"

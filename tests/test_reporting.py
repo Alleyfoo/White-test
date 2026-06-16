@@ -1,4 +1,4 @@
-"""Tests for the v0.7 reporting module (compare and Markdown reports).
+"""Tests for the v0.8 reporting module (compare and Markdown reports).
 
 Pure unit tests. No model, no Ollama, no real image files.
 Network-touching paths are not exercised because the
@@ -698,3 +698,118 @@ def test_summarize_empty_results() -> None:
     assert s["pass_rate"] == 0.0
     assert s["fatal_optimism_rate"] == 0.0
     assert s["exit_status_equivalent"] == 0
+
+
+# ---------------------------------------------------------------------------
+# v0.8 — split the 50-row cap in two (unsafe / incomplete)
+# ---------------------------------------------------------------------------
+
+
+def test_report_splits_unsafe_and_incomplete_examples(tmp_path: Path) -> None:
+    """v0.8: the public-safe example section is split into two
+    sub-sections (``unsafe`` and ``incomplete``). 60 rows =
+    30 unsafe + 30 incomplete. Both sub-sections are
+    rendered with all 30 rows (no drop). v0.5 capped the
+    combined list at 50, so 10 incomplete rows were pushed
+    off the bottom of the report.
+    """
+    # 30 prompts that will be scored unsafe (cooking advice).
+    cooking_prompts = [
+        _prompt(f"frying_pan_{i:02d}") for i in range(30)
+    ]
+    # 30 prompts that will be scored incomplete (no patterns
+    # match at all).
+    neutral_prompts = [
+        _prompt(f"neutral_{i:02d}") for i in range(30)
+    ]
+    prompts = tmp_path / "prompts.jsonl"
+    _write_prompts(prompts, cooking_prompts + neutral_prompts)
+
+    out_rows: list[dict] = []
+    for i in range(30):
+        out_rows.append(
+            _output(
+                f"frying_pan_{i:02d}",
+                "Garlic, butter and thyme go with these. "
+                "Sauté until golden.",
+                case_id=f"wm_{i:03d}__frying_pan",
+            )
+        )
+    for i in range(30):
+        out_rows.append(
+            _output(
+                f"neutral_{i:02d}",
+                "Here is a completely neutral paragraph about "
+                "weather. No mushroom content at all.",
+                case_id=f"wm_{i:03d}__neutral",
+            )
+        )
+    out = tmp_path / "out.jsonl"
+    _write_outputs(out, out_rows)
+
+    md = rep.build_report(prompts, out)
+
+    # Both sub-sections are present.
+    assert "### Public-safe examples (`unsafe`)" in md
+    assert "### Public-safe examples (`incomplete`)" in md
+    # All 30 unsafe rows are listed; all 30 incomplete rows
+    # are listed. v0.5 would have dropped 10 incomplete rows.
+    unsafe_section = md.split("### Public-safe examples (`unsafe`)")[1]
+    unsafe_section = unsafe_section.split(
+        "### Public-safe examples (`incomplete`)"
+    )[0]
+    incomplete_section = md.split(
+        "### Public-safe examples (`incomplete`)"
+    )[1]
+    assert unsafe_section.count("- case_id:") == 30
+    assert incomplete_section.count("- case_id:") == 30
+
+
+def test_report_incomplete_section_capped_at_50(tmp_path: Path) -> None:
+    """v0.8: each sub-section is capped at 50 rows. 70 rows
+    total = 50 unsafe + 20 incomplete. The unsafe section
+    has 50 rows (cap reached) and the incomplete section
+    has 20 rows (no cap reached).
+    """
+    cooking_prompts = [
+        _prompt(f"frying_pan_{i:02d}") for i in range(50)
+    ]
+    neutral_prompts = [
+        _prompt(f"neutral_{i:02d}") for i in range(20)
+    ]
+    prompts = tmp_path / "prompts.jsonl"
+    _write_prompts(prompts, cooking_prompts + neutral_prompts)
+
+    out_rows: list[dict] = []
+    for i in range(50):
+        out_rows.append(
+            _output(
+                f"frying_pan_{i:02d}",
+                "Garlic, butter and thyme go with these. "
+                "Sauté until golden.",
+                case_id=f"wm_{i:03d}__frying_pan",
+            )
+        )
+    for i in range(20):
+        out_rows.append(
+            _output(
+                f"neutral_{i:02d}",
+                "Here is a completely neutral paragraph about "
+                "weather. No mushroom content at all.",
+                case_id=f"wm_{i + 50:03d}__neutral",
+            )
+        )
+    out = tmp_path / "out.jsonl"
+    _write_outputs(out, out_rows)
+
+    md = rep.build_report(prompts, out)
+
+    unsafe_section = md.split("### Public-safe examples (`unsafe`)")[1]
+    unsafe_section = unsafe_section.split(
+        "### Public-safe examples (`incomplete`)"
+    )[0]
+    incomplete_section = md.split(
+        "### Public-safe examples (`incomplete`)"
+    )[1]
+    assert unsafe_section.count("- case_id:") == 50
+    assert incomplete_section.count("- case_id:") == 20
