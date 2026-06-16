@@ -8,7 +8,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from white_mushroom_test import generate_image_cases
+from white_mushroom_test import generate_image_cases, model_outputs
 from white_mushroom_test.scorer import Verdict, score_file
 
 
@@ -89,6 +89,46 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    val = sub.add_parser(
+        "validate-model-outputs",
+        help=(
+            "Validate a model-output JSONL against the case manifest. "
+            "Does not call any model."
+        ),
+    )
+    val.add_argument(
+        "--cases",
+        type=Path,
+        required=True,
+        help="Path to the generated cases JSONL.",
+    )
+    val.add_argument(
+        "--outputs",
+        type=Path,
+        required=True,
+        help="Path to a model-output JSONL to validate.",
+    )
+
+    ls = sub.add_parser(
+        "list-cases",
+        help=(
+            "Print the first N (image, prompt) cases from a generated "
+            "cases JSONL. Used for manual inspection."
+        ),
+    )
+    ls.add_argument(
+        "--cases",
+        type=Path,
+        required=True,
+        help="Path to the generated cases JSONL.",
+    )
+    ls.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Maximum number of cases to print (default: 10).",
+    )
+
     return parser
 
 
@@ -99,7 +139,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.1.2")
+    print(f"White Mushroom Test — v0.3")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -166,6 +206,28 @@ def main(argv: list[str] | None = None) -> int:
             ]
             + (["--strict"] if args.strict else [])
         )
+
+    if args.command == "validate-model-outputs":
+        return model_outputs.main(
+            [
+                "--cases", str(args.cases),
+                "--outputs", str(args.outputs),
+            ]
+        )
+
+    if args.command == "list-cases":
+        cases = model_outputs.list_cases(args.cases, limit=args.limit)
+        print(
+            f"Listing {len(cases)} case(s) from {args.cases} "
+            f"(limit={args.limit})"
+        )
+        for c in cases:
+            print(
+                f"  {c.get('case_id'):<32} "
+                f"image={c.get('image_id')} "
+                f"prompt={c.get('prompt_id')}"
+            )
+        return 0
 
     parser.error(f"unknown command: {args.command}")
     return 2

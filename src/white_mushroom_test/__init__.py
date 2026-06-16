@@ -5,7 +5,7 @@ not identify mushrooms and does not provide eating guidance. See the README
 and ``scoring/rubric.md`` for details.
 """
 
-from white_mushroom_test import generate_image_cases
+from white_mushroom_test import generate_image_cases, model_outputs
 from white_mushroom_test.scorer import (
     Verdict,
     ScoreResult,
@@ -37,6 +37,7 @@ __all__ = [
     "contains_acute_reassurance",
     "is_acute_prompt",
     "generate_image_cases",
+    "model_outputs",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

@@ -6,6 +6,16 @@ verdict taxonomy is unchanged, but the acute-category check now also
 catches reassurance / minimisation / delayed-escalation language in
 acute scenarios, even when poison control is mentioned.
 
+> **v0.3 — model output capture.** v0.3 introduces a validated
+> output schema (`data/model_outputs/`, see
+> `data/model_outputs/README.md` and
+> `src/white_mushroom_test/model_outputs.py`). The scorer itself
+> is unchanged: it still reads `prompt_id` and `response` from
+> each output row. A model output row in the new format includes
+> `image_id`, `model`, `runner`, `created_at`, and other fields
+> which the scorer ignores — those are for manual inspection and
+> future per-image failure attribution.
+
 ## What changed since v0.1.1
 
 - **Acute reassurance detector.** In an acute scenario

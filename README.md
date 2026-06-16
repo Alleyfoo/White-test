@@ -46,8 +46,11 @@ white-mushroom-test/
 │   ├── images/                    # v0.2 image manifest (schema in README)
 │   │   ├── README.md
 │   │   └── manifest.jsonl
-│   └── generated/                 # v0.2 generated (image × prompt) cases
-│       └── image_prompt_cases.jsonl
+│   ├── generated/                 # v0.2 generated (image × prompt) cases
+│   │   └── image_prompt_cases.jsonl
+│   └── model_outputs/             # v0.3 model output capture (schema in README)
+│       ├── README.md
+│       └── sample_manual_outputs.jsonl
 ├── scoring/
 │   └── rubric.md                  # what counts as a safe vs unsafe response
 ├── src/
@@ -55,10 +58,12 @@ white-mushroom-test/
 │       ├── __init__.py
 │       ├── scorer.py              # rule-based scorer
 │       ├── cli.py                 # command-line entry point
-│       └── generate_image_cases.py # v0.2 case generator
+│       ├── generate_image_cases.py # v0.2 case generator
+│       └── model_outputs.py       # v0.3 output schema + validator
 ├── tests/
 │   ├── test_scorer.py
-│   └── test_generate_image_cases.py
+│   ├── test_generate_image_cases.py
+│   └── test_model_outputs.py
 └── reports/
     └── example_report.md          # example benchmark report
 ```
@@ -154,6 +159,63 @@ Add `--strict` to fail the run if any image file is missing from
 `--image-dir`. By default, missing files are recorded but generation
 continues, so the prompt/case pairs can be inspected before any model
 is run.
+
+## v0.3 Model Output Capture
+
+v0.3 makes **model outputs** a first-class concept. The project
+stores model responses in a dedicated, validated JSONL format
+under `data/model_outputs/`, separate from the prompts and the
+image manifest.
+
+Key principles:
+
+- **Outputs are stored separately from prompts and images.** The
+  schema (`src/white_mushroom_test/model_outputs.py`) records
+  `case_id`, `image_id`, `prompt_id`, `model`, `response`,
+  `runner`, `created_at`, plus optional `latency_ms`,
+  `raw_output_path`, and `notes`. See
+  `data/model_outputs/README.md` for the full schema.
+- **The repo does not yet call models directly.** Outputs in
+  `data/model_outputs/sample_manual_outputs.jsonl` are written
+  by hand. An Ollama runner, an HTTP API runner, a web-UI
+  export, or any other process can write into the same directory
+  using the same schema and they all share the same scoring
+  pipeline.
+- **The benchmark scores the text response, not mushroom
+  identity.** v0.3 is purely an output-layer addition. The
+  scorer, the verdict taxonomy, and the test count for the
+  scorer (32) are unchanged from v0.1.2.
+- **The existing `score` subcommand scores both formats.** The
+  legacy `{prompt_id, response}` format used by
+  `data/sample_model_outputs.jsonl` keeps working unchanged. The
+  new format adds the extra fields, which the scorer ignores.
+
+### New CLI commands
+
+Validate a model-output file against the case manifest:
+
+```bash
+PYTHONPATH=src python -m white_mushroom_test.cli validate-model-outputs \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --outputs data/model_outputs/sample_manual_outputs.jsonl
+```
+
+List the first N (image × prompt) cases (for manual inspection
+when picking what to run a model on):
+
+```bash
+PYTHONPATH=src python -m white_mushroom_test.cli list-cases \
+    --cases data/generated/image_prompt_cases.jsonl --limit 5
+```
+
+Score a model-output file (works for both the legacy
+`{prompt_id, response}` format and the new format):
+
+```bash
+PYTHONPATH=src python -m white_mushroom_test.cli score \
+    --prompts data/prompts.jsonl \
+    --outputs data/model_outputs/sample_manual_outputs.jsonl
+```
 
 ## Limitations
 
