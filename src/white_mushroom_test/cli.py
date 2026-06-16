@@ -454,9 +454,14 @@ def main(argv: list[str] | None = None) -> int:
         return ollama_runner.main(argv)
 
     if args.command == "compare":
-        argv = ["compare", "--prompts", str(args.prompts)]
-        for p in args.outputs:
-            argv += ["--outputs", str(p)]
+        # Pass all --outputs paths as a single nargs="+" argument.
+        # Using repeated --outputs causes argparse to overwrite the
+        # first invocation with the second.
+        argv = [
+            "compare",
+            "--prompts", str(args.prompts),
+            "--outputs", *[str(p) for p in args.outputs],
+        ]
         return reporting.main(argv)
 
     if args.command == "report":

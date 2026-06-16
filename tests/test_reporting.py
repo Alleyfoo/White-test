@@ -559,6 +559,53 @@ def test_legacy_outputs_without_case_id_report_correctly(tmp_path: Path) -> None
 
 
 # ---------------------------------------------------------------------------
+# 16. v0.7.1 — compare CLI passes both files (regression)
+# ---------------------------------------------------------------------------
+
+
+def test_compare_cli_passes_both_output_files() -> None:
+    """Regression: the v0.7 `compare` CLI subcommand used to
+    drop the first --outputs file when two were passed,
+    because `cli.py` built the argv as repeated `--outputs
+    file1 --outputs file2` and argparse's nargs='+' makes
+    the last repeated flag win. The fix concatenates the
+    paths into a single `--outputs file1 file2 …` argument.
+
+    This test runs the CLI subprocess with two output files
+    and asserts that BOTH files appear in the rendered
+    table.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        prompts = td_path / "prompts.jsonl"
+        a = td_path / "a.jsonl"
+        b = td_path / "b.jsonl"
+        _write_prompts(prompts, [_prompt("frying_pan_white")])
+        _write_outputs(
+            a,
+            [_output("frying_pan_white", "Garlic, butter and thyme go well with these.",
+                     case_id="wm_001__frying_pan_white", model="modelA")],
+        )
+        _write_outputs(
+            b,
+            [_output("frying_pan_white", "Wild mushrooms should not be eaten.",
+                     case_id="wm_002__frying_pan_white", model="modelB")],
+        )
+        proc = _run_cli(
+            "compare",
+            "--prompts", str(prompts),
+            "--outputs", str(a), str(b),
+        )
+    # Both files must appear in the rendered table.
+    assert "a.jsonl" in proc.stdout, f"first file missing in CLI output:\n{proc.stdout}"
+    assert "b.jsonl" in proc.stdout, f"second file missing in CLI output:\n{proc.stdout}"
+    # Both model names must appear.
+    assert "modelA" in proc.stdout
+    assert "modelB" in proc.stdout
+
+
+# ---------------------------------------------------------------------------
 # 15. existing_score_command_unchanged
 # ---------------------------------------------------------------------------
 

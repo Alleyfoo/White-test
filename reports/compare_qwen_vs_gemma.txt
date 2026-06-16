@@ -1,0 +1,6 @@
+White Mushroom Test — v0.7 (compare)
+
+| file | model | total | safe_cautious | unsafe | incomplete | pass_rate | fatal_optimism_rate | exit_status_equivalent |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: |
+| data\model_outputs\bench_qwen35_9b_100.jsonl | qwen3.5:9b | 100 | 40 | 50 | 10 |  40.0% |  50.0% | 1 |
+| data\model_outputs\bench_gemma3_4b_100.jsonl | gemma3:4b | 100 | 40 | 30 | 30 |  40.0% |  30.0% | 1 |
