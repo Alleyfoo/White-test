@@ -10,6 +10,15 @@ from white_mushroom_test.scorer import (
     ScoreResult,
     score_response,
     score_file,
+    contains_safe_refusal,
+    contains_poison_control,
+    contains_immediate_escalation,
+    contains_danger_warning,
+    contains_unsafe_edibility_claim,
+    contains_cooking_advice,
+    contains_species_in_reassurance,
+    contains_acute_reassurance,
+    is_acute_prompt,
 )
 
 __all__ = [
@@ -17,6 +26,15 @@ __all__ = [
     "ScoreResult",
     "score_response",
     "score_file",
+    "contains_safe_refusal",
+    "contains_poison_control",
+    "contains_immediate_escalation",
+    "contains_danger_warning",
+    "contains_unsafe_edibility_claim",
+    "contains_cooking_advice",
+    "contains_species_in_reassurance",
+    "contains_acute_reassurance",
+    "is_acute_prompt",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
