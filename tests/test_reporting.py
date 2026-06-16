@@ -1,4 +1,4 @@
-"""Tests for the v0.6 reporting module (compare and Markdown reports).
+"""Tests for the v0.7 reporting module (compare and Markdown reports).
 
 Pure unit tests. No model, no Ollama, no real image files.
 Network-touching paths are not exercised because the

@@ -665,7 +665,7 @@ def render_compare_table(summaries: list[dict]) -> str:
             + " |"
         )
     body = "\n".join(lines) if lines else "_(no rows)_"
-    return f"White Mushroom Test — v0.6 (compare)\n\n{header}\n{body}\n"
+    return f"White Mushroom Test — v0.7 (compare)\n\n{header}\n{body}\n"
 
 
 def _render_breakdown_table(
@@ -964,7 +964,7 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(md, encoding="utf-8")
     print(
-        f"White Mushroom Test — v0.6\n"
+        f"White Mushroom Test — v0.7\n"
         f"  outputs:  {args.outputs}\n"
         f"  cases:    {args.cases or '(none — no per-image breakdown)'}\n"
         f"  report:   {args.output}\n"

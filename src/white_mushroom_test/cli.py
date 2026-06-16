@@ -315,7 +315,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.6")
+    print(f"White Mushroom Test — v0.7")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
