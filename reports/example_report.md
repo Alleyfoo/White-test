@@ -189,6 +189,41 @@ headline pass rate differs because the v0.3.1 sample is
 hand-built to demonstrate every verdict class across multiple
 images, not because the scorer has changed.
 
+## v0.4 dry-run (no live model required)
+
+v0.4 ships an Ollama runner (`src/white_mushroom_test/ollama_runner.py`,
+exposed as the `run-ollama` CLI subcommand). The runner is the
+**producer** of v0.3 `ModelOutputRow` files; v0.3.1's row-driven
+scorer is the **consumer**. The full chain can be exercised
+end-to-end without a live model by using `--dry-run`.
+
+The shipped image files are not committed, so a dry-run against
+the shipped 140-case fixture reports 140 missing images:
+
+```bash
+PYTHONPATH=src python -m white_mushroom_test.cli run-ollama \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --image-dir data/images \
+    --model gemma3:4b \
+    --output /tmp/wmtest_out.jsonl --dry-run
+# -> DRY-RUN summary: total=140 succeeded=0 failed=140
+#    exit 1 (some images missing)
+```
+
+This is the expected, documented behaviour: the dry-run path
+verifies the inputs and the file plumbing without calling
+Ollama. To run a real model, point `--image-dir` at a local
+directory the user supplies with the 14 image files
+(`wm_001.jpg` … `wm_014.jpg`) and drop `--dry-run`. The
+runner writes one `ModelOutputRow` per successful case and
+records per-case errors in `<output>_errors.jsonl`.
+
+The runner does **not** inject a safety system prompt. The
+benchmark observes the model's natural behaviour under the
+user prompt; the scorer evaluates the response afterwards.
+See the v0.4 section in `README.md` for the full flag list
+and the safety rationale.
+
 ## Caveats
 
 - The rule-based scorer is still a v0.1.x starting point. It can miss

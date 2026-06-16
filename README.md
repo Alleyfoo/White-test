@@ -227,6 +227,116 @@ PYTHONPATH=src python -m white_mushroom_test.cli score \
     --outputs data/model_outputs/sample_manual_outputs.jsonl
 ```
 
+## v0.4 Ollama Vision Runner
+
+v0.4 ships a **local Ollama runner** that produces v0.3
+`ModelOutputRow` files. The runner is local-only: it talks to
+a user-provided Ollama host (default `http://localhost:11434`)
+and reads image files from a user-provided directory. No model
+API key is required and no third-party dependencies are
+added — HTTP I/O uses the standard library's `urllib.request`.
+
+The runner lives at `src/white_mushroom_test/ollama_runner.py`
+and is exposed as the `run-ollama` subcommand.
+
+### Safety principle
+
+The benchmark observes the model's **natural behaviour** under
+the user prompt. The runner does **not** inject a safety
+system prompt. The case `prompt` is sent to Ollama verbatim.
+The scorer evaluates the response afterwards. This is a
+deliberate design choice: any harness-side steering would
+contaminate the measurement.
+
+### Running against a real model
+
+```bash
+# 1. (Optional) verify your image-dir has the expected files
+#    before paying for a full model run.
+PYTHONPATH=src python -m white_mushroom_test.cli run-ollama \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --image-dir data/images/local \
+    --model gemma3:4b \
+    --output data/model_outputs/gemma3-4b.jsonl --dry-run
+
+# 2. Real run. Image files are NOT committed; --image-dir
+#    points at a local directory the user supplies.
+PYTHONPATH=src python -m white_mushroom_test.cli run-ollama \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --image-dir data/images/local \
+    --model gemma3:4b \
+    --output data/model_outputs/gemma3-4b.jsonl
+
+# 3. Validate and score the produced output.
+PYTHONPATH=src python -m white_mushroom_test.cli validate-model-outputs \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --outputs data/model_outputs/gemma3-4b.jsonl
+
+PYTHONPATH=src python -m white_mushroom_test.cli score \
+    --prompts data/prompts.jsonl \
+    --outputs data/model_outputs/gemma3-4b.jsonl
+```
+
+### Flags
+
+| Flag             | Default                          | Purpose |
+|------------------|----------------------------------|---------|
+| `--cases`        | (required)                       | Generated (image × prompt) cases JSONL |
+| `--image-dir`    | (required)                       | Directory of image files |
+| `--model`        | (required)                       | Ollama model tag, e.g. `gemma3:4b` |
+| `--output`       | (required)                       | Output JSONL path |
+| `--host`         | `http://localhost:11434`         | Ollama host |
+| `--timeout`      | `120`                            | Per-call timeout (seconds) |
+| `--temperature`  | `0`                              | Sampling temperature |
+| `--limit`        | all                              | Cap cases processed |
+| `--start`        | `0`                              | Skip first N cases |
+| `--errors`       | `<output stem>_errors.jsonl`     | Per-case error JSONL |
+| `--overwrite`    | off                              | Truncate output at start |
+| `--resume`       | off                              | Skip `case_id`s already in output |
+| `--dry-run`      | off                              | Verify image paths only; never call Ollama |
+
+The runner is **tolerant of per-case errors**: a missing
+image file, a network timeout, or a model refusal for one
+case does not stop the run. The error is recorded in the
+error JSONL (`error_type` / `error` fields) and the runner
+moves on to the next case. The CLI exit code is 0 if any
+case succeeded, 1 if all cases failed.
+
+### What the runner writes
+
+- **`data/model_outputs/<run>.jsonl`** — one v0.3
+  `ModelOutputRow` per successful case, with `case_id`,
+  `image_id`, `prompt_id`, `model`, `response`, `runner=
+  "ollama"`, `created_at`, `latency_ms`, and `notes=
+  "host=<host>"`. The runner also passes through the
+  case's `image_quality`, `view`, and `context` fields
+  for downstream per-image failure attribution. The
+  validator silently drops fields it does not know, so
+  extra keys are safe.
+- **`data/model_outputs/<run>_errors.jsonl`** — one row
+  per failed case, with `error_type` and `error`.
+
+### What the runner does NOT do
+
+- It does **not** identify mushrooms, label them as edible,
+  or give eating advice. It only captures the model's text
+  response to the user prompt.
+- It does **not** modify the case file, the manifest, the
+  prompts, or the scorer. It only writes JSONL files into
+  `data/model_outputs/`.
+- It does **not** include image files in the repository.
+  Image files are user-supplied at runtime via `--image-dir`.
+
+### Out of scope for v0.4
+
+- `compare` (side-by-side scoring of multiple output files)
+- `report` (Markdown report generator)
+- Live cloud-API runners (OpenAI, Anthropic, etc.)
+
+These are planned for later versions. See
+`reports/example_report.md` for an example of what v0.4's
+output looks like once a real model run is scored.
+
 ## Limitations
 
 The v0.1.2 scorer is **rule-based** and uses a fixed pattern set. It is a

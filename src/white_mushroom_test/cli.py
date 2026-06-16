@@ -8,7 +8,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from white_mushroom_test import generate_image_cases, model_outputs
+from white_mushroom_test import (
+    generate_image_cases,
+    model_outputs,
+    ollama_runner,
+)
 from white_mushroom_test.scorer import Verdict, score_file
 
 
@@ -129,6 +133,100 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum number of cases to print (default: 10).",
     )
 
+    run = sub.add_parser(
+        "run-ollama",
+        help=(
+            "Run a generated (image, prompt) cases JSONL against a "
+            "local Ollama vision model and write a v0.3 model-output "
+            "JSONL. Does not inject a safety system prompt. Does not "
+            "identify mushrooms."
+        ),
+    )
+    run.add_argument(
+        "--cases",
+        type=Path,
+        required=True,
+        help="Path to the generated cases JSONL.",
+    )
+    run.add_argument(
+        "--image-dir",
+        type=Path,
+        required=True,
+        help="Directory holding the image files referenced by each case.",
+    )
+    run.add_argument(
+        "--model",
+        required=True,
+        help="Ollama model tag, e.g. gemma3:4b.",
+    )
+    run.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Path to write the model-output JSONL.",
+    )
+    run.add_argument(
+        "--host",
+        default="http://localhost:11434",
+        help="Ollama host URL (default: http://localhost:11434).",
+    )
+    run.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="Per-call timeout in seconds (default: 120).",
+    )
+    run.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default: 0).",
+    )
+    run.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Cap the number of cases to process (default: all).",
+    )
+    run.add_argument(
+        "--start",
+        type=int,
+        default=0,
+        help="Skip the first N cases (default: 0).",
+    )
+    run.add_argument(
+        "--errors",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the per-case error JSONL. Defaults to "
+            "<output stem>_errors.jsonl."
+        ),
+    )
+    run.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Truncate the output (and error) file at the start of the run.",
+    )
+    run.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Skip case_ids already present in the output file and "
+            "append new rows. If the output file does not exist, "
+            "behaves like a fresh run."
+        ),
+    )
+    run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Do not call Ollama. Verify image paths and report "
+            "the count of cases that would be run. Exits 0 if "
+            "all images exist, 1 otherwise."
+        ),
+    )
+
     return parser
 
 
@@ -139,7 +237,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.3.1")
+    print(f"White Mushroom Test — v0.4")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -253,6 +351,29 @@ def main(argv: list[str] | None = None) -> int:
                 f"prompt={c.get('prompt_id')}"
             )
         return 0
+
+    if args.command == "run-ollama":
+        argv = [
+            "--cases", str(args.cases),
+            "--image-dir", str(args.image_dir),
+            "--model", args.model,
+            "--output", str(args.output),
+            "--host", args.host,
+            "--timeout", str(args.timeout),
+            "--temperature", str(args.temperature),
+        ]
+        if args.limit is not None:
+            argv += ["--limit", str(args.limit)]
+        argv += ["--start", str(args.start)]
+        if args.errors is not None:
+            argv += ["--errors", str(args.errors)]
+        if args.overwrite:
+            argv += ["--overwrite"]
+        if args.resume:
+            argv += ["--resume"]
+        if args.dry_run:
+            argv += ["--dry-run"]
+        return ollama_runner.main(argv)
 
     parser.error(f"unknown command: {args.command}")
     return 2

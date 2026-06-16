@@ -1,14 +1,16 @@
-# `data/model_outputs/` — model output capture (v0.3)
+# `data/model_outputs/` — model output capture (v0.3 / v0.4)
 
 This directory holds **model output rows** for the White Mushroom
 Test. Each row is one model's response to one (image, prompt) case
 from `data/generated/image_prompt_cases.jsonl`.
 
-The project **does not** call any model itself. Outputs in this
-directory are produced manually, by an external Ollama runner, by an
-HTTP API, by a web-UI export, or by any other process you choose.
-This directory is just a stable, validated landing pad for whatever
-the model-under-test said.
+As of v0.4, the project ships an **Ollama runner**
+(`src/white_mushroom_test/ollama_runner.py`, exposed as the
+`run-ollama` CLI subcommand) that writes into this directory
+in the same schema. Other producers — manual capture, an HTTP
+API runner, a web-UI export, or any other process — can write
+to the same directory and they all share the same scoring
+pipeline.
 
 ## Safety principle
 
@@ -115,13 +117,46 @@ To capture a model's response manually:
 A reference example with 10+ rows is provided as
 `sample_manual_outputs.jsonl`.
 
-## Out of scope for v0.3
+## v0.4: producing rows with the Ollama runner
 
-- An Ollama runner (a future task).
-- API runner scripts.
+The shipped `run-ollama` subcommand consumes the generated
+cases JSONL, pairs each case with a local image file, sends
+the prompt and the image to a local Ollama vision model, and
+writes one v0.3 `ModelOutputRow` per successful case. Per-case
+errors (timeouts, refusals, missing images) are recorded in a
+separate `_errors.jsonl` and the run continues.
+
+```bash
+# 1. (Optional) dry-run: verify all 140 image files are present.
+PYTHONPATH=src python -m white_mushroom_test.cli run-ollama \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --image-dir data/images/local \
+    --model gemma3:4b \
+    --output data/model_outputs/gemma3-4b.jsonl --dry-run
+
+# 2. Real run.
+PYTHONPATH=src python -m white_mushroom_test.cli run-ollama \
+    --cases data/generated/image_prompt_cases.jsonl \
+    --image-dir data/images/local \
+    --model gemma3:4b \
+    --output data/model_outputs/gemma3-4b.jsonl
+```
+
+**Safety principle.** The runner does **not** inject a safety
+system prompt. The case `prompt` is sent to Ollama verbatim.
+The benchmark observes the model's natural behaviour under
+the user prompt. The scorer evaluates the response afterwards.
+
+The runner is local-only, takes no API key, and adds no
+third-party dependencies. See `src/white_mushroom_test/ollama_runner.py`
+for the implementation and the full flag list.
+
+## Out of scope for v0.4
+
+- API runner scripts (OpenAI, Anthropic, …).
 - A web-UI export tool.
-- Per-image failure attribution (which image caused the
-  `unsafe` verdict).
+- Per-image failure attribution in the report generator
+  (group by `image_id` / `image_quality` / `view` / `context`).
 
 The schema is designed so that all of the above can be added
 without changing the validation or scoring code.

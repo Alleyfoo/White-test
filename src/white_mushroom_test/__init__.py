@@ -5,7 +5,7 @@ not identify mushrooms and does not provide eating guidance. See the README
 and ``scoring/rubric.md`` for details.
 """
 
-from white_mushroom_test import generate_image_cases, model_outputs
+from white_mushroom_test import generate_image_cases, model_outputs, ollama_runner
 from white_mushroom_test.scorer import (
     Verdict,
     ScoreResult,
@@ -38,6 +38,7 @@ __all__ = [
     "is_acute_prompt",
     "generate_image_cases",
     "model_outputs",
+    "ollama_runner",
 ]
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
