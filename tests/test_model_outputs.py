@@ -353,18 +353,97 @@ def test_score_subcommand_still_works_with_legacy_outputs() -> None:
 
 
 def test_score_subcommand_works_with_new_outputs_format() -> None:
-    """The new schema is consumed by the existing score path."""
+    """v0.3.1: the new schema is consumed row-by-row. The CLI
+    reports ``total: 12`` (the JSONL row count), not ``total: 10``
+    (the distinct prompt_id count). Multiple output rows that
+    share a prompt_id are NOT collapsed.
+    """
     proc = _run_cli(
         "score",
         "--prompts", "data/prompts.jsonl",
         "--outputs", "data/model_outputs/sample_manual_outputs.jsonl",
     )
-    # 12 rows; some unsafe, some safe. The run must succeed (parse every
-    # row) and the human summary must mention at least one unsafe row,
-    # since the sample includes 4 unsafe responses.
+    # The run must succeed (parse every row) and the human summary
+    # must mention at least one unsafe row, since the sample
+    # includes several unsafe responses.
     assert proc.returncode in (0, 1)
+    assert "total:   12" in proc.stdout
     assert "unsafe" in proc.stdout
+    # The per-row section should use case_id labels, not prompt_id
+    # labels, because every row in the new format carries a
+    # case_id.
+    assert "wm_001__frying_pan_white" in proc.stdout
+
+
+def test_score_subcommand_legacy_outputs_total_equals_prompt_count() -> None:
+    """v0.3.1: the legacy 10-row, 10-prompt_id sample still scores
+    10 rows. The dict-keyed collapse bug was only visible when
+    distinct prompt_id count differed from row count.
+    """
+    proc = _run_cli(
+        "score",
+        "--prompts", "data/prompts.jsonl",
+        "--outputs", "data/sample_model_outputs.jsonl",
+    )
+    assert proc.returncode == 1
     assert "total:   10" in proc.stdout
+
+
+def test_score_subcommand_json_output_for_new_format() -> None:
+    """v0.3.1: --json output preserves the row count and emits the
+    v0.3 metadata fields.
+    """
+    proc = _run_cli(
+        "score",
+        "--prompts", "data/prompts.jsonl",
+        "--outputs", "data/model_outputs/sample_manual_outputs.jsonl",
+        "--json",
+    )
+    assert proc.returncode in (0, 1)
+    payload = json.loads(proc.stdout)
+    assert len(payload) == 12
+    # At least one entry should carry the v0.3 metadata fields.
+    first = next(p for p in payload if p.get("case_id"))
+    assert "case_id" in first
+    assert "image_id" in first
+    assert "model" in first
+    assert "runner" in first
+    assert "created_at" in first
+
+
+def test_score_subcommand_legacy_json_output_no_metadata() -> None:
+    """v0.3.1: --json output for the legacy text-only format does
+    NOT add null metadata fields. The v0.3 fields are only added
+    when at least one result carries them.
+    """
+    proc = _run_cli(
+        "score",
+        "--prompts", "data/prompts.jsonl",
+        "--outputs", "data/sample_model_outputs.jsonl",
+        "--json",
+    )
+    payload = json.loads(proc.stdout)
+    assert len(payload) == 10
+    for entry in payload:
+        assert "case_id" not in entry
+        assert "image_id" not in entry
+        assert "model" not in entry
+        assert "runner" not in entry
+        assert "created_at" not in entry
+
+
+def test_score_subcommand_legacy_outputs_no_regression() -> None:
+    """v0.3.1 regression check: legacy sample still scores the
+    same 4 unsafe / 6 safe as v0.1.2.
+    """
+    proc = _run_cli(
+        "score",
+        "--prompts", "data/prompts.jsonl",
+        "--outputs", "data/sample_model_outputs.jsonl",
+    )
+    assert proc.returncode == 1
+    assert "unsafe           4  ( 40.0%)" in proc.stdout
+    assert "safe_cautious    6  ( 60.0%)" in proc.stdout
 
 
 def test_list_cases_subcommand() -> None:

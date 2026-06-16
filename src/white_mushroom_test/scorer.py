@@ -60,7 +60,14 @@ class Verdict(str, Enum):
 
 @dataclass
 class ScoreResult:
-    """The score for a single (prompt, response) pair."""
+    """The score for a single (prompt, response) pair.
+
+    In v0.3 and later, this is the score for a single *output row* —
+    which is one model response to one (image, prompt) case. The
+    optional ``case_id`` / ``image_id`` / ``model`` / ``runner`` /
+    ``created_at`` fields are populated when the output row carried
+    them; the legacy text-only format leaves them ``None``.
+    """
 
     prompt_id: str
     verdict: Verdict
@@ -72,6 +79,13 @@ class ScoreResult:
     matched_acute_missing: list[str] = field(default_factory=list)
     matched_acute_reassurance: list[str] = field(default_factory=list)
     refused: bool = False
+    # Optional v0.3+ output-row metadata. ``None`` for the legacy
+    # text-only {prompt_id, response} format.
+    case_id: str | None = None
+    image_id: str | None = None
+    model: str | None = None
+    runner: str | None = None
+    created_at: str | None = None
 
     # Backwards-compatible aliases for the v0.1 single-list API.
     @property
@@ -719,20 +733,31 @@ def _iter_jsonl(path: Path) -> Iterator[dict]:
                 ) from exc
 
 
-def _outputs_by_prompt(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
+def _iter_outputs(path: Path) -> Iterator[dict]:
+    """Yield output-row dicts from a JSONL file.
+
+    Each row must contain ``prompt_id`` and ``response``. The legacy
+    text-only ``{prompt_id, response}`` format and the v0.3
+    ``{case_id, image_id, prompt_id, model, response, runner,
+    created_at, ...}`` format are both accepted.
+    """
     for record in _iter_jsonl(path):
         if "prompt_id" not in record or "response" not in record:
             raise ValueError(
                 f"{path}: each output record needs 'prompt_id' and 'response' "
                 f"keys; got {sorted(record.keys())}"
             )
-        out[record["prompt_id"]] = record["response"]
-    return out
+        yield record
 
 
 def score_file(prompts_path: Path, outputs_path: Path) -> list[ScoreResult]:
     """Score a JSONL of model outputs against a JSONL of prompts.
+
+    Iteration is **row-driven** in v0.3.1: the returned list has one
+    :class:`ScoreResult` per output row, in file order. Multiple
+    output rows that share the same ``prompt_id`` (e.g. the same
+    prompt paired with different images) each produce their own
+    result; they are not collapsed.
 
     Parameters
     ----------
@@ -740,29 +765,39 @@ def score_file(prompts_path: Path, outputs_path: Path) -> list[ScoreResult]:
         Path to a JSONL file with ``id``, ``prompt`` and (optionally)
         ``category`` keys per line.
     outputs_path:
-        Path to a JSONL file with ``prompt_id`` and ``response`` keys per
-        line. Each ``prompt_id`` must match a prompt ``id``; prompts without
-        a matching output are scored as ``incomplete``.
+        Path to a JSONL file with ``prompt_id`` and ``response`` keys
+        per line. Each ``prompt_id`` must match a prompt ``id``; an
+        output row whose ``prompt_id`` does not match any prompt
+        raises :class:`ValueError`. This is a hard error, not a
+        silent ``incomplete`` verdict, because the row-driven
+        iteration no longer auto-marks unmatched prompts as missing.
     """
-    outputs = _outputs_by_prompt(outputs_path)
-    results: list[ScoreResult] = []
-    for prompt in _iter_jsonl(prompts_path):
-        if "id" not in prompt:
+    prompts: list[dict] = list(_iter_jsonl(prompts_path))
+    for p in prompts:
+        if "id" not in p:
             raise ValueError(
                 f"{prompts_path}: each prompt record needs an 'id' key"
             )
-        prompt_id = prompt["id"]
+    prompt_by_id: dict[str, dict] = {p["id"]: p for p in prompts}
+
+    results: list[ScoreResult] = []
+    for record in _iter_outputs(outputs_path):
+        prompt_id = record["prompt_id"]
+        prompt = prompt_by_id.get(prompt_id)
+        if prompt is None:
+            raise ValueError(
+                f"{outputs_path}: output row references unknown "
+                f"prompt_id {prompt_id!r}; prompts are "
+                f"{sorted(prompt_by_id)}"
+            )
         category = prompt.get("category")
-        response = outputs.get(prompt_id)
-        if response is None:
-            results.append(
-                ScoreResult(
-                    prompt_id=prompt_id,
-                    verdict=Verdict.INCOMPLETE,
-                )
-            )
-        else:
-            results.append(
-                score_response(prompt_id, response, category=category)
-            )
+        result = score_response(prompt_id, record["response"], category=category)
+        # Attach v0.3 output-row metadata when present. The legacy
+        # text-only format leaves them None.
+        result.case_id = record.get("case_id")
+        result.image_id = record.get("image_id")
+        result.model = record.get("model")
+        result.runner = record.get("runner")
+        result.created_at = record.get("created_at")
+        results.append(result)
     return results

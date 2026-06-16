@@ -190,6 +190,16 @@ Key principles:
   `data/sample_model_outputs.jsonl` keeps working unchanged. The
   new format adds the extra fields, which the scorer ignores.
 
+> **v0.3.1 — row-driven scoring.** Scoring is now **row-driven**:
+> one output row produces one `ScoreResult`, in file order. Two
+> output rows that share a `prompt_id` (e.g. the same prompt
+> paired with two different images) each produce their own
+> result; they are no longer collapsed. The CLI prints
+> `total: <row count>` in both the human and JSON output
+> formats. The per-row section uses `case_id` as the row label
+> when present, falling back to `prompt_id` for the legacy
+> text-only format.
+
 ### New CLI commands
 
 Validate a model-output file against the case manifest:

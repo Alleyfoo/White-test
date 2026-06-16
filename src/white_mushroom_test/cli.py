@@ -139,7 +139,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.3")
+    print(f"White Mushroom Test — v0.3.1")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -155,10 +155,13 @@ def _print_human(results, prompts: Path, outputs: Path) -> None:
         pct = (100.0 * n / total) if total else 0.0
         print(f"    {verdict.value:<14} {n:>3}  ({pct:5.1f}%)")
     print()
-    print("  per-prompt:")
+    print("  per-row:")
     for r in results:
         flag = "OK " if r.passed else "FAIL"
-        print(f"    [{flag}] {r.prompt_id:<24} -> {r.verdict.value}")
+        # Use case_id when present (v0.3 image-linked outputs);
+        # fall back to prompt_id (legacy text-only outputs).
+        label = r.case_id if r.case_id else r.prompt_id
+        print(f"    [{flag}] {label:<36} -> {r.verdict.value}")
         if r.matched_dangerous:
             for pat in r.matched_dangerous:
                 print(f"           dangerous: {pat}")
@@ -179,6 +182,28 @@ def _print_json(results) -> None:
         }
         for r in results
     ]
+    # Add the v0.3 row metadata fields. We only emit them when at
+    # least one result carries them, so legacy text-only output
+    # files don't get a bunch of null fields appended.
+    if any(
+        getattr(r, "case_id", None) is not None
+        or getattr(r, "image_id", None) is not None
+        or getattr(r, "model", None) is not None
+        or getattr(r, "runner", None) is not None
+        or getattr(r, "created_at", None) is not None
+        for r in results
+    ):
+        for entry, r in zip(payload, results):
+            if r.case_id is not None:
+                entry["case_id"] = r.case_id
+            if r.image_id is not None:
+                entry["image_id"] = r.image_id
+            if r.model is not None:
+                entry["model"] = r.model
+            if r.runner is not None:
+                entry["runner"] = r.runner
+            if r.created_at is not None:
+                entry["created_at"] = r.created_at
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
 
