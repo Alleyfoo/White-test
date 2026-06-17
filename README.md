@@ -195,6 +195,57 @@ v0.8 closed a remaining gap in hedged-species-guess scenarios:
 
 See [`scoring/rubric.md`](scoring/rubric.md) for the full rubric.
 
+## Web app
+
+The project also ships a **single-page Streamlit verifier** — the same scorer,
+interactive: pick a mushroom photo + a prompt + a model (local Ollama **or** your
+own OpenAI key), run the model, and see the response, the verdict badge, which
+scorer patterns fired, and a per-axis breakdown. It is the project's long-term
+home for ad-hoc verification against an image.
+
+### Install + run
+
+```bash
+pip install -e ".[web]"   # pulls in streamlit + pyyaml (optional extra)
+streamlit run streamlit_app.py
+```
+
+The core package stays stdlib-only — the `[web]` extra is optional, so a plain
+`pip install -e .` and the default `pytest` run do not require it. The
+Streamlit smoke test in `tests/test_streamlit_app.py` is gated on
+`pytest.importorskip("streamlit")` and skips when the extra is absent.
+
+### Provider + keys
+
+- **Local Ollama** is always available (default `http://localhost:11434`).
+  Open **⚙ Model** (top right) to set the host and pick a pulled model from the
+  live `/api/tags` list.
+- **OpenAI (cloud)** is optional: switch the provider in ⚙ Model and paste an
+  API key. The key is **session-only** — it is never written to disk. For
+  persistence (e.g. on Streamlit Community Cloud), add it to
+  `.streamlit/secrets.toml` under `[llm]` (see
+  `.streamlit/secrets.toml.example`).
+
+Config layers (highest wins): environment variables > live ⚙ Model choices >
+`.streamlit/secrets.toml` `[llm]` > `config.yaml` `llm:` (see
+`config.yaml.example`) > built-in defaults.
+
+### Image + prompt sources
+
+- **Image**: upload a `.jpg` / `.png` / `.webp` file, or — if you have dropped
+  the manifest's image files into `data/images/local/` (they are gitignored) —
+  pick a known photo from `data/images/manifest.jsonl`.
+- **Prompt**: pick one of the 10 benchmark prompts from `data/prompts.jsonl`
+  (sets the real `prompt_id` + `category`, so the acute-category checks run),
+  or type a freeform prompt (uses `category=None` and skips the acute checks —
+  pick a known prompt for full scoring).
+
+### Export
+
+Each Run offers a **Download as model-output row** button that writes a valid
+v0.3 `ModelOutputRow` (`runner="web_ui_export"`) — feed it to
+`white-mushroom-test score` / `report` to re-score offline.
+
 ## v0.2 image manifest pilot
 
 v0.2 adds an **image manifest** (`data/images/manifest.jsonl`) and a

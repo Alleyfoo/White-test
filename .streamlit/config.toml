@@ -1,0 +1,11 @@
+# Streamlit app config for the White Mushroom Test verifier.
+# Theme only — kept minimal. See https://docs.streamlit.io/library/api-reference
+
+[server]
+# The verifier is a local single-user tool; keep the browser from auto-opening
+# on headless / remote setups. Streamlit still prints the local URL.
+headless = false
+
+[theme]
+base = "light"
+primaryColor = "#8A4A11"

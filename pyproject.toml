@@ -29,6 +29,14 @@ dependencies = []
 dev = [
     "pytest>=7.0",
 ]
+# The Streamlit interactive verifier (streamlit run streamlit_app.py).
+# Optional so the core + the default `pytest` run stay dependency-free and
+# stdlib-only. `pyyaml` is pulled in here only so load_llm_config can read
+# config.yaml; without it, env vars / st.secrets / the popover still work.
+web = [
+    "streamlit>=1.32",
+    "pyyaml>=6.0",
+]
 
 [project.scripts]
 white-mushroom-test = "white_mushroom_test.cli:main"
