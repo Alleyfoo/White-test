@@ -21,11 +21,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from white_mushroom_test import ollama_runner as orr  # noqa: E402
+from white_mushroom_test import vision_probe as vp  # noqa: E402
 from white_mushroom_test.model_outputs import (  # noqa: E402
     ModelOutputRow,
     load_model_outputs,
     main as validate_main,
 )
+from white_mushroom_test.vision_probe import ProbeReport  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -511,4 +513,110 @@ def test_dry_run_against_shipped_cases(tmp_path: Path) -> None:
     # Neither file should be written.
     assert not output.exists()
     assert not errors.exists()
+
+
+# ---------------------------------------------------------------------------
+# 15. --probe-first vision-capability guard
+# ---------------------------------------------------------------------------
+
+
+def test_probe_first_aborts_on_non_capable_model(tmp_path: Path, monkeypatch) -> None:
+    """--probe-first aborts (exit 2) before any case runs when the model is
+    not vision-capable. No output file is written and Ollama is never called."""
+    monkeypatch.setattr(
+        vp,
+        "probe_ollama_model",
+        lambda host, model, *, timeout: ProbeReport("ollama", model, vp.TEXT_ONLY, []),
+    )
+
+    img_dir = tmp_path / "images"
+    _write_image(img_dir / "wm_001.jpg")
+    cases_path = tmp_path / "cases.jsonl"
+    cases_path.write_text(json.dumps(_case()) + "\n")
+    output = tmp_path / "out.jsonl"
+
+    def _no_call(host, payload, timeout):
+        raise AssertionError("run must not call Ollama after a failed --probe-first")
+
+    monkeypatch.setattr(orr, "call_ollama", _no_call)
+
+    rc = orr.main(
+        [
+            "--cases", str(cases_path),
+            "--image-dir", str(img_dir),
+            "--model", "blind:1b",
+            "--output", str(output),
+            "--probe-first",
+        ]
+    )
+    assert rc == 2
+    assert not output.exists()
+
+
+def test_probe_first_proceeds_on_capable_model(tmp_path: Path, monkeypatch) -> None:
+    """--probe-first with a 'capable' verdict lets the run proceed normally."""
+    monkeypatch.setattr(
+        vp,
+        "probe_ollama_model",
+        lambda host, model, *, timeout: ProbeReport("ollama", model, vp.CAPABLE, []),
+    )
+
+    img_dir = tmp_path / "images"
+    _write_image(img_dir / "wm_001.jpg")
+    cases_path = tmp_path / "cases.jsonl"
+    cases_path.write_text(json.dumps(_case()) + "\n")
+    output = tmp_path / "out.jsonl"
+    errors = tmp_path / "out_errors.jsonl"
+
+    monkeypatch.setattr(orr, "call_ollama", lambda host, payload, timeout: "ok")
+
+    rc = orr.main(
+        [
+            "--cases", str(cases_path),
+            "--image-dir", str(img_dir),
+            "--model", "seeing:7b",
+            "--output", str(output),
+            "--errors", str(errors),
+            "--probe-first",
+        ]
+    )
+    assert rc == 0
+    rows = load_model_outputs(output)
+    assert len(rows) == 1
+    assert rows[0].model == "seeing:7b"
+
+
+def test_probe_first_skipped_under_dry_run(tmp_path: Path, monkeypatch) -> None:
+    """--probe-first is skipped under --dry-run: dry-run makes no network calls,
+    so the probe (which calls Ollama) must not fire either."""
+    called = {"probe": False}
+
+    def _fake_probe(host, model, *, timeout):
+        called["probe"] = True
+        return ProbeReport("ollama", model, vp.CAPABLE, [])
+
+    monkeypatch.setattr(vp, "probe_ollama_model", _fake_probe)
+
+    img_dir = tmp_path / "images"
+    _write_image(img_dir / "wm_001.jpg")
+    cases_path = tmp_path / "cases.jsonl"
+    cases_path.write_text(json.dumps(_case()) + "\n")
+    output = tmp_path / "out.jsonl"
+    errors = tmp_path / "out_errors.jsonl"
+
+    rc = orr.main(
+        [
+            "--cases", str(cases_path),
+            "--image-dir", str(img_dir),
+            "--model", "any:1b",
+            "--output", str(output),
+            "--errors", str(errors),
+            "--probe-first",
+            "--dry-run",
+        ]
+    )
+    # dry-run with the image present -> exit 0; probe never fired; no output.
+    assert rc == 0
+    assert called["probe"] is False
+    assert not output.exists()
 

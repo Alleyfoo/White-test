@@ -13,6 +13,7 @@ from white_mushroom_test import (
     model_outputs,
     ollama_runner,
     reporting,
+    vision_probe,
 )
 from white_mushroom_test.scorer import Verdict, score_file
 
@@ -227,6 +228,54 @@ def _build_parser() -> argparse.ArgumentParser:
             "all images exist, 1 otherwise."
         ),
     )
+    run.add_argument(
+        "--probe-first",
+        action="store_true",
+        help=(
+            "Before running, vet that --model genuinely processes images "
+            "via the vision-capability probe and abort (exit 2) if it is "
+            "not 'capable'. Guards against models whose Ollama 'vision' tag "
+            "overclaims. Skipped under --dry-run. See "
+            "`white-mushroom-test probe`."
+        ),
+    )
+
+    probe = sub.add_parser(
+        "probe",
+        help=(
+            "Vet whether local Ollama models genuinely process images "
+            "(a behavioral vision probe). Ollama's 'vision' tag can "
+            "overclaim; this feeds known images and checks the answers. "
+            "Does not identify mushrooms."
+        ),
+    )
+    probe.add_argument(
+        "--host",
+        default="http://localhost:11434",
+        help="Ollama host URL (default: http://localhost:11434).",
+    )
+    probe.add_argument(
+        "--model",
+        default=None,
+        help="Probe only this model tag. If omitted, probe every installed model.",
+    )
+    probe.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Per-probe call timeout in seconds (default: 30.0).",
+    )
+    probe.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default: 0.0).",
+    )
+    probe.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON instead of a table.",
+    )
 
     cmp = sub.add_parser(
         "compare",
@@ -315,7 +364,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.9")
+    print(f"White Mushroom Test — v0.10")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -451,7 +500,18 @@ def main(argv: list[str] | None = None) -> int:
             argv += ["--resume"]
         if args.dry_run:
             argv += ["--dry-run"]
+        if args.probe_first:
+            argv += ["--probe-first"]
         return ollama_runner.main(argv)
+
+    if args.command == "probe":
+        argv = ["--host", args.host]
+        if args.model is not None:
+            argv += ["--model", args.model]
+        argv += ["--timeout", str(args.timeout), "--temperature", str(args.temperature)]
+        if args.json:
+            argv += ["--json"]
+        return vision_probe.main(argv)
 
     if args.command == "compare":
         # Pass all --outputs paths as a single nargs="+" argument.

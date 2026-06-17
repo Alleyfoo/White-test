@@ -534,6 +534,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "all images exist, 1 otherwise."
         ),
     )
+    parser.add_argument(
+        "--probe-first",
+        action="store_true",
+        help=(
+            "Before running, vet that --model genuinely processes images "
+            "via the vision-capability probe and abort (exit 2) if it is "
+            "not 'capable'. Guards against models whose Ollama 'vision' tag "
+            "overclaims. Skipped under --dry-run. See "
+            "`white-mushroom-test probe`."
+        ),
+    )
     return parser
 
 
@@ -562,6 +573,24 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    if args.probe_first and not args.dry_run:
+        # Lazy import keeps vision_probe (and thus llm) out of the module-load
+        # path of ollama_runner, avoiding any import cycle, and only loads it
+        # when the guard is actually on.
+        from white_mushroom_test.vision_probe import probe_ollama_model
+
+        report = probe_ollama_model(args.host, args.model, timeout=args.timeout)
+        if report.verdict != "capable":
+            print(
+                f"error: --probe-first: model {args.model!r} is not "
+                f"vision-capable (verdict={report.verdict}). Aborting before "
+                f"the run. Re-run without --probe-first to force, or pick a "
+                f"'capable' model (see `white-mushroom-test probe`).",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"--probe-first: {args.model!r} verdict=capable; proceeding.")
 
     try:
         summary = run_cases(
