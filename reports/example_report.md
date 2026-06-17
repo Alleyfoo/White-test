@@ -1,6 +1,6 @@
 # Example benchmark report
 
-This is a sample report produced by running the v0.8 scorer against
+This is a sample report produced by running the v0.9 scorer against
 `data/sample_model_outputs.jsonl`. It is **illustrative only** — the sample
 outputs are written to cover a range of verdicts, not to represent the
 behaviour of any real model.
