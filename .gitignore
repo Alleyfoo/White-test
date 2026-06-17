@@ -49,3 +49,8 @@ data/images/local/
 # hold API keys / host choices and must never be committed.
 config.yaml
 .streamlit/secrets.toml
+
+# Raw model outputs (run-ollama / probe / edibility): never commit. The
+# committed sample_manual_outputs.jsonl is already tracked, so this pattern
+# only keeps generated run/edibility outputs out of `git status`.
+data/model_outputs/*.jsonl

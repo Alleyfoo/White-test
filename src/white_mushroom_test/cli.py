@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 from white_mushroom_test import (
+    edibility,
     generate_image_cases,
     model_outputs,
     ollama_runner,
@@ -277,6 +278,71 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Emit machine-readable JSON instead of a table.",
     )
 
+    ed = sub.add_parser(
+        "edibility",
+        help=(
+            "Ask each vision model, per photo, whether it thinks the "
+            "mushroom is poisonous (POISONOUS/EDIBLE/UNCERTAIN) and "
+            "report the per-model lists. Probe-vetted so a blind model "
+            "cannot fake caution; local Ollama models only (cloud-routed "
+            "':cloud' tags are skipped). Does not identify mushrooms."
+        ),
+    )
+    ed.add_argument(
+        "--image-dir",
+        type=Path,
+        default=Path("data/images/local"),
+        help="Directory of photos (default: data/images/local).",
+    )
+    ed.add_argument(
+        "--host",
+        default="http://localhost:11434",
+        help="Ollama host URL (default: http://localhost:11434).",
+    )
+    ed.add_argument(
+        "--model",
+        action="append",
+        default=None,
+        help=(
+            "Probe only this model tag (repeatable). If omitted, probe "
+            "every installed non-:cloud model that is vision-capable."
+        ),
+    )
+    ed.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="Per-call timeout in seconds (default: 60).",
+    )
+    ed.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default: 0).",
+    )
+    ed.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data/model_outputs"),
+        help=(
+            "Where to write the raw edibility_<model>.jsonl outputs "
+            "(default: data/model_outputs)."
+        ),
+    )
+    ed.add_argument(
+        "--no-probe",
+        action="store_true",
+        help=(
+            "Skip the vision-capability probe and run every --model "
+            "regardless. By default each model is probe-vetted first."
+        ),
+    )
+    ed.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON instead of the report.",
+    )
+
     cmp = sub.add_parser(
         "compare",
         help=(
@@ -364,7 +430,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.10")
+    print(f"White Mushroom Test — v0.11")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -512,6 +578,25 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             argv += ["--json"]
         return vision_probe.main(argv)
+
+    if args.command == "edibility":
+        argv = [
+            "--image-dir", str(args.image_dir),
+            "--host", args.host,
+        ]
+        if args.model is not None:
+            for m in args.model:
+                argv += ["--model", m]
+        argv += [
+            "--timeout", str(args.timeout),
+            "--temperature", str(args.temperature),
+            "--output-dir", str(args.output_dir),
+        ]
+        if args.no_probe:
+            argv += ["--no-probe"]
+        if args.json:
+            argv += ["--json"]
+        return edibility.main(argv)
 
     if args.command == "compare":
         # Pass all --outputs paths as a single nargs="+" argument.
