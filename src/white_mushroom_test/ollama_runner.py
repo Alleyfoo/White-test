@@ -107,20 +107,29 @@ def build_ollama_payload(
     model: str,
     image_b64: str,
     temperature: float,
+    *,
+    extra_options: dict | None = None,
 ) -> dict:
     """Build the JSON body for ``POST /api/generate``.
 
     The shape mirrors Ollama's documented ``/api/generate``
     request. ``stream`` is always ``False`` so the response is
     a single JSON object, not a stream of newline-delimited
-    JSON chunks.
+    JSON chunks. ``extra_options`` (e.g. ``{"num_predict": 4096}``) is merged
+    into ``options`` alongside ``temperature`` — used to cap a thinking
+    model's output length so a long reasoning trace cannot hang the run
+    (the urllib ``timeout`` is per-recv and does not bound total generation
+    time when Ollama trickles bytes during a long generation).
     """
+    options: dict = {"temperature": temperature}
+    if extra_options:
+        options.update(extra_options)
     return {
         "model": model,
         "prompt": case["prompt"],
         "images": [image_b64],
         "stream": False,
-        "options": {"temperature": temperature},
+        "options": options,
     }
 
 
@@ -288,6 +297,7 @@ def run_cases(
     resume: bool = False,
     dry_run: bool = False,
     call_ollama_fn: Callable[[str, dict, float], str] | None = None,
+    extra_options: dict | None = None,
 ) -> RunSummary:
     """Run a sequence of cases against Ollama and write results.
 
@@ -323,6 +333,11 @@ def run_cases(
         Injection point for tests. Defaults to the real
         :func:`call_ollama`. The signature is
         ``(host, payload, timeout) -> str``.
+    extra_options:
+        Optional dict merged into the Ollama request ``options`` (e.g.
+        ``{"num_predict": 4096}`` to cap a thinking model's output length).
+        Forwarded to :func:`build_ollama_payload`; ``None`` leaves the
+        payload with only ``temperature`` (the default, unchanged behaviour).
 
     Returns
     -------
@@ -373,7 +388,8 @@ def run_cases(
                         )
                     image_b64 = encode_image_base64(image_path)
                     payload = build_ollama_payload(
-                        case, model, image_b64, temperature
+                        case, model, image_b64, temperature,
+                        extra_options=extra_options,
                     )
                     t0 = datetime.now(timezone.utc)
                     response = call(host, payload, timeout)

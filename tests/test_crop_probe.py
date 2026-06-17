@@ -177,6 +177,35 @@ def test_run_crop_model_no_crops_raises(monkeypatch, tmp_path: Path) -> None:
         )
 
 
+def test_run_crop_model_max_tokens_caps_output(monkeypatch, tmp_path: Path) -> None:
+    """``max_tokens`` flows through to the Ollama payload as ``num_predict`` so a
+    thinking model's output length is capped (the urllib timeout is per-recv and
+    does not bound total generation time)."""
+    image_dir = tmp_path / "imgs"
+    crops_dir = tmp_path / "crops"
+    out_dir = tmp_path / "out"
+    image_dir.mkdir()
+    crops_dir.mkdir()
+    full_b = b"\xff\xd8\xffFULL_wm_001"
+    cut_b = b"\xff\xd8\xffSTEMCUT_wm_001"
+    (image_dir / "wm_001.jpg").write_bytes(full_b)
+    (crops_dir / "wm_001_stemcut.jpg").write_bytes(cut_b)
+    seen: dict = {}
+
+    def fake_call(host, payload, timeout):
+        seen["options"] = payload["options"]
+        data = base64.b64decode(payload["images"][0])
+        return "POISONOUS\nAmanita" if data == full_b else "UNCERTAIN\n?"
+
+    monkeypatch.setattr(ollama_runner, "call_ollama", fake_call)
+    cp.run_crop_model(
+        "stub:1", image_dir, crops_dir,
+        host="http://x", timeout=10, temperature=0.0, output_dir=out_dir,
+        max_tokens=4096,
+    )
+    assert seen["options"].get("num_predict") == 4096
+
+
 # ---------------------------------------------------------------------------
 # report
 # ---------------------------------------------------------------------------
@@ -237,7 +266,7 @@ def test_cli_crop_probe_dispatch_reports_flip(monkeypatch, capsys, tmp_path: Pat
     )
 
     def _fake_run(model, image_dir, crops_dir, *, host, timeout, temperature,
-                  output_dir, only_stems=None):
+                  output_dir, only_stems=None, max_tokens=None):
         return {
             "wm_001": {
                 "full": ed.EdibilityVerdict(ed.POISONOUS, "volva",

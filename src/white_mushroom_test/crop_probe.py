@@ -132,6 +132,7 @@ def run_crop_model(
     temperature: float,
     output_dir: Path,
     only_stems: set[str] | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, dict[str, object]]:
     """Run the edibility prompt against the FULL and STEM-CROPPED photos for one
     model; classify each; pair by ``image_id``.
@@ -141,6 +142,11 @@ def run_crop_model(
     + classify + pair. A stem whose crop timed out / errored is absent from the
     stemcut JSONL → ``stemcut`` is ``None`` (the STEMCUT_MISSING category).
     Returns ``{image_id: {"full": EdibilityVerdict, "stemcut": EdibilityVerdict | None}}``.
+
+    ``max_tokens`` (Ollama ``num_predict``) caps each call's output length.
+    Recommended for thinking models (qwen3.5:9b): without it a long reasoning
+    trace can run for many minutes because the urllib ``timeout`` is per-recv
+    and does not bound total generation time. ``None`` = no cap.
     """
     cases = build_crop_cases(image_dir, crops_dir, only_stems=only_stems)
     full_cases = [c for c in cases if c["variant"] == FULL]
@@ -159,15 +165,21 @@ def run_crop_model(
     full_err = output_dir / f"crop_{safe}_full_errors.jsonl"
     cut_out = output_dir / f"crop_{safe}_stemcut.jsonl"
     cut_err = output_dir / f"crop_{safe}_stemcut_errors.jsonl"
+    # Cap a thinking model's output length (Ollama ``num_predict``) so a long
+    # reasoning trace cannot hang the run — the urllib timeout is per-recv and
+    # does not bound total generation time. None = no cap (default behaviour).
+    extra_options = {"num_predict": max_tokens} if max_tokens else None
     ollama_runner.run_cases(
         full_cases, image_dir, model, full_out, full_err,
         host=host, timeout=timeout, temperature=temperature,
         start=0, limit=None, overwrite=True, resume=False, dry_run=False,
+        extra_options=extra_options,
     )
     ollama_runner.run_cases(
         stemcut_cases, crops_dir, model, cut_out, cut_err,
         host=host, timeout=timeout, temperature=temperature,
         start=0, limit=None, overwrite=True, resume=False, dry_run=False,
+        extra_options=extra_options,
     )
     full_v = {
         row.image_id: edibility.classify_edibility(row.response)
@@ -415,6 +427,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"Sampling temperature (default: {DEFAULT_TEMPERATURE}).",
     )
     parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help=(
+            "Cap each call's output length (Ollama num_predict). Recommended for "
+            "thinking models (qwen3.5:9b): without it a long reasoning trace can "
+            "hang the run, since the urllib --timeout is per-recv and does not "
+            "bound total generation time. None = no cap (default)."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("data/model_outputs"),
@@ -524,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
                 model, args.image_dir, crops_dir,
                 host=args.host, timeout=args.timeout, temperature=args.temperature,
                 output_dir=args.output_dir, only_stems=only_stems,
+                max_tokens=args.max_tokens,
             )
         except LLMError as exc:
             print(f"error: {model!r}: {exc}", file=sys.stderr)

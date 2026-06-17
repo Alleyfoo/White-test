@@ -94,6 +94,47 @@ def test_build_ollama_payload_includes_required_fields() -> None:
     assert payload["options"]["temperature"] == 0.0
 
 
+def test_build_ollama_payload_extra_options_merged() -> None:
+    """``extra_options`` is merged into ``options`` alongside ``temperature``;
+    ``None`` leaves only ``temperature`` (the default, unchanged behaviour)."""
+    case = _case(prompt="Is this edible?")
+    payload = orr.build_ollama_payload(
+        case, model="qwen3.5:9b", image_b64="AAAA", temperature=0.0,
+        extra_options={"num_predict": 4096},
+    )
+    assert payload["options"]["temperature"] == 0.0
+    assert payload["options"]["num_predict"] == 4096
+    # No extra_options -> only temperature (backwards compatible).
+    plain = orr.build_ollama_payload(case, model="m", image_b64="A", temperature=0.0)
+    assert plain["options"] == {"temperature": 0.0}
+
+
+def test_run_cases_extra_options_flow_to_call(tmp_path: Path) -> None:
+    """``extra_options`` (e.g. ``num_predict``) reaches the Ollama call payload,
+    so a caller can cap a thinking model's output length."""
+    img_dir = tmp_path / "images"
+    _write_image(img_dir / "wm_001.jpg")
+    cases_path = tmp_path / "cases.jsonl"
+    cases_path.write_text(json.dumps(_case()) + "\n")
+    seen: dict = {}
+
+    def capturing_call(host, payload, timeout):
+        seen["options"] = payload["options"]
+        return "POISONOUS\nAmanita"
+
+    orr.run_cases(
+        orr.load_cases(cases_path),
+        image_dir=img_dir,
+        model="qwen3.5:9b",
+        output_path=tmp_path / "out.jsonl",
+        error_path=tmp_path / "out_errors.jsonl",
+        call_ollama_fn=capturing_call,
+        extra_options={"num_predict": 4096},
+    )
+    assert seen["options"]["num_predict"] == 4096
+    assert seen["options"]["temperature"] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # 3. resolve_image_path uses case["filename"]
 # ---------------------------------------------------------------------------

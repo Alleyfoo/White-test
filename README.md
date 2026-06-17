@@ -1188,8 +1188,12 @@ PYTHONPATH=src python -m white_mushroom_test.cli crop-probe --regenerate-crops \
     --image-dir data/images/local --crop-fraction 0.6
 
 # 2. Run the probe (probe-vetted; local Ollama models only, ':cloud' skipped).
+#    --max-tokens caps each call's output length (Ollama num_predict);
+#    recommended for thinking models (qwen3.5:9b) — without it a long reasoning
+#    trace can hang the run, since the urllib --timeout is per-recv and does not
+#    bound total generation time.
 PYTHONPATH=src python -m white_mushroom_test.cli crop-probe \
-    --model gemma3:4b --model qwen3.5:9b --timeout 90 --json
+    --model gemma3:4b --model qwen3.5:9b --max-tokens 4096 --timeout 120 --json
 ```
 
 Flags mirror `edibility` (`--image-dir`, `--host`, `--model` repeatable,
@@ -1197,10 +1201,11 @@ Flags mirror `edibility` (`--image-dir`, `--host`, `--model` repeatable,
 `--crops-dir` (default `<image-dir>/_crops`), `--crop-fraction` (default 0.6 —
 keep the top 60%, remove the bottom), `--regenerate-crops` (generate the crops
 first, needs the `[image]` extra), `--manifest` / `--no-manifest` (read the
-`view` field for a per-photo `[view]` annotation), and `--view-filter`
+`view` field for a per-photo `[view]` annotation), `--view-filter`
 (comma-separated `view` values to restrict the run to, e.g.
 `full_stem_base,side_view,underside` — the photos where the stem base is visible
-and the ablation is meaningful).
+and the ablation is meaningful), and `--max-tokens` (cap each call's output
+length; recommended for thinking models — see the comment above).
 
 Crops live in `<image-dir>/_crops/` and the raw outputs in
 `data/model_outputs/crop_<model>_full.jsonl` + `_stemcut.jsonl`; both are

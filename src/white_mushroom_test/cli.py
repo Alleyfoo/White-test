@@ -403,6 +403,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Sampling temperature (default: 0).",
     )
     crop.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help=(
+            "Cap each call's output length (Ollama num_predict). Recommended for "
+            "thinking models (qwen3.5:9b) to stop a long reasoning trace hanging "
+            "the run. None = no cap (default)."
+        ),
+    )
+    crop.add_argument(
         "--output-dir",
         type=Path,
         default=Path("data/model_outputs"),
@@ -708,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
             "--output-dir", str(args.output_dir),
             "--manifest", str(args.manifest),
         ]
+        if args.max_tokens is not None:
+            argv += ["--max-tokens", str(args.max_tokens)]
         if args.view_filter is not None:
             argv += ["--view-filter", args.view_filter]
         if args.regenerate_crops:
