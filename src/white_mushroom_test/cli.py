@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 from white_mushroom_test import (
+    crop_probe,
     edibility,
     generate_image_cases,
     model_outputs,
@@ -343,6 +344,98 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Emit machine-readable JSON instead of the report.",
     )
 
+    crop = sub.add_parser(
+        "crop-probe",
+        help=(
+            "Feature-ablation identification probe: crop the stem base off "
+            "each photo and compare each model's edibility verdict on the "
+            "FULL vs STEM-CROPPED image. Reveals whether a verdict is "
+            "grounded in the diagnostic feature (volva) or pattern-matching "
+            "on the cap. Probe-vetted; local Ollama models only (':cloud' "
+            "tags skipped)."
+        ),
+    )
+    crop.add_argument(
+        "--image-dir",
+        type=Path,
+        default=Path("data/images/local"),
+        help="Directory of full photos (default: data/images/local).",
+    )
+    crop.add_argument(
+        "--crops-dir",
+        type=Path,
+        default=None,
+        help="Directory of <stem>_stemcut.jpg crop files (default: <image-dir>/_crops).",
+    )
+    crop.add_argument(
+        "--crop-fraction",
+        type=float,
+        default=0.6,
+        help="Keep the top fraction of each image when regenerating crops (default: 0.6).",
+    )
+    crop.add_argument(
+        "--regenerate-crops",
+        action="store_true",
+        help="Generate the cropped set first (needs the optional [image] extra).",
+    )
+    crop.add_argument(
+        "--host",
+        default="http://localhost:11434",
+        help="Ollama host URL (default: http://localhost:11434).",
+    )
+    crop.add_argument(
+        "--model",
+        action="append",
+        default=None,
+        help="Probe only this model tag (repeatable). If omitted, probe every "
+             "installed non-:cloud model that is vision-capable.",
+    )
+    crop.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="Per-call timeout in seconds (default: 60).",
+    )
+    crop.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default: 0).",
+    )
+    crop.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data/model_outputs"),
+        help="Where to write the raw crop_<model>_full/_stemcut.jsonl outputs.",
+    )
+    crop.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("data/images/manifest.jsonl"),
+        help="Image manifest JSONL for the 'view' annotation (default: data/images/manifest.jsonl).",
+    )
+    crop.add_argument(
+        "--view-filter",
+        default=None,
+        help="Comma-separated 'view' values to restrict the run to (e.g. "
+             "'full_stem_base,side_view,underside'). Requires a readable manifest.",
+    )
+    crop.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="Skip reading the manifest (no [view] tags; --view-filter disabled).",
+    )
+    crop.add_argument(
+        "--no-probe",
+        action="store_true",
+        help="Skip the vision-capability probe (run every --model regardless).",
+    )
+    crop.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON instead of the report.",
+    )
+
     cmp = sub.add_parser(
         "compare",
         help=(
@@ -430,7 +523,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.11")
+    print(f"White Mushroom Test — v0.12")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -597,6 +690,35 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             argv += ["--json"]
         return edibility.main(argv)
+
+    if args.command == "crop-probe":
+        argv = [
+            "--image-dir", str(args.image_dir),
+            "--host", args.host,
+        ]
+        if args.crops_dir is not None:
+            argv += ["--crops-dir", str(args.crops_dir)]
+        if args.model is not None:
+            for m in args.model:
+                argv += ["--model", m]
+        argv += [
+            "--crop-fraction", str(args.crop_fraction),
+            "--timeout", str(args.timeout),
+            "--temperature", str(args.temperature),
+            "--output-dir", str(args.output_dir),
+            "--manifest", str(args.manifest),
+        ]
+        if args.view_filter is not None:
+            argv += ["--view-filter", args.view_filter]
+        if args.regenerate_crops:
+            argv += ["--regenerate-crops"]
+        if args.no_probe:
+            argv += ["--no-probe"]
+        if args.no_manifest:
+            argv += ["--no-manifest"]
+        if args.json:
+            argv += ["--json"]
+        return crop_probe.main(argv)
 
     if args.command == "compare":
         # Pass all --outputs paths as a single nargs="+" argument.

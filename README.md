@@ -1149,6 +1149,78 @@ advice benchmark than its raw belief warrants. The edibility probe makes that
 gap visible. It is **not** a substitute for the advice benchmark and makes no
 edibility claims about the photos.
 
+## v0.12 Cropped-Image Probe
+
+The v0.11 edibility probe showed the models disagree on *belief* (gemma flags
+1/10 poisonous, qwen 4/10) — but not *why*. The cropped-image probe is a
+**feature-ablation identification test**: crop the bottom off each photo
+(removing the stem base / volva — the actual Amanita diagnostic) and re-ask the
+same edibility question. If a verdict flips POISONOUS→UNCERTAIN when the volva
+is gone, the model was **grounded in the diagnostic feature**; if it stays, the
+model was **pattern-matching on the cap**. This extends the probe lineage:
+v0.10 capability → v0.11 belief → v0.12 *grounding*.
+
+It reuses `edibility.PROMPT` and `edibility.classify_edibility` verbatim — no
+new prompt, no new classifier — and `ollama_runner.run_cases` for the vision
+calls. Each photo is run twice (FULL and STEM-CROPPED), the two verdicts are
+classified and paired by `image_id`, and `compare()` labels the change.
+
+### `compare()` taxonomy
+
+Per-photo (closed set): `STAYED_POISONOUS`, `STAYED_EDIBLE`, `STAYED_UNCERTAIN`,
+`FLIPPED_P_TO_U`, `FLIPPED_P_TO_E`, `FLIPPED_E_TO_P`, `FLIPPED_E_TO_U`,
+`FLIPPED_U_TO_P`, `FLIPPED_U_TO_E`, `STEMCUT_MISSING` (the crop timed out /
+errored), `FULL_MISSING`. Summary rollups: `LOST_CERTAINTY` (P→U + E→U — the
+volva-keyed signature), `GAINED_CERTAINTY`, `BECAME_MORE_DANGEROUS`,
+`BECAME_MORE_CAUTIOUS`. `species_changed` flags whether the 2nd-line species
+guess differed between full and crop.
+
+The headline contrast: `FLIPPED_P_TO_U` on a `full_stem_base` photo = the model
+was reading the volva; `STAYED_POISONOUS` on the same photo when cropped = it
+was reading the cap.
+
+### CLI
+
+```bash
+# 1. One-time prep: generate the cropped set (needs the optional [image] extra).
+pip install -e ".[image]"
+PYTHONPATH=src python -m white_mushroom_test.cli crop-probe --regenerate-crops \
+    --image-dir data/images/local --crop-fraction 0.6
+
+# 2. Run the probe (probe-vetted; local Ollama models only, ':cloud' skipped).
+PYTHONPATH=src python -m white_mushroom_test.cli crop-probe \
+    --model gemma3:4b --model qwen3.5:9b --timeout 90 --json
+```
+
+Flags mirror `edibility` (`--image-dir`, `--host`, `--model` repeatable,
+`--timeout`, `--temperature`, `--output-dir`, `--no-probe`, `--json`) plus:
+`--crops-dir` (default `<image-dir>/_crops`), `--crop-fraction` (default 0.6 —
+keep the top 60%, remove the bottom), `--regenerate-crops` (generate the crops
+first, needs the `[image]` extra), `--manifest` / `--no-manifest` (read the
+`view` field for a per-photo `[view]` annotation), and `--view-filter`
+(comma-separated `view` values to restrict the run to, e.g.
+`full_stem_base,side_view,underside` — the photos where the stem base is visible
+and the ablation is meaningful).
+
+Crops live in `<image-dir>/_crops/` and the raw outputs in
+`data/model_outputs/crop_<model>_full.jsonl` + `_stemcut.jsonl`; both are
+gitignored. Pre-generated crop files work with **no Pillow** installed — only
+`--regenerate-crops` needs the `[image]` extra. `_crops` is a reserved subdir:
+the edibility probe globs `*.jpg` non-recursively, so crops never leak into a
+plain `edibility` run — keep any recursive glob out of the image dir.
+
+### Methodological note
+
+The crop is a **heuristic** (top 60%, no per-photo segmentation): it removes the
+stem base when the stem base is at the bottom of the frame (`side_view`,
+`full_stem_base`, `underside`) and is a null operation for `cap_only` photos.
+The report annotates each photo with its manifest `view` so a "stayed the same"
+on a `cap_only` photo reads as a **null control** (there was no stem to ablate),
+not a failure. `--view-filter` focuses the run on the photos where the ablation
+is meaningful. Ground truth stays withheld (`edibility_label_public: "withheld"`);
+this is model-behavior, not mushroom identification — the user (a forager) is
+the ground-truth judge, not the tool.
+
 ## Limitations
 
 The v0.9 scorer is **rule-based** and uses a fixed pattern set. It is a
