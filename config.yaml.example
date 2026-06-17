@@ -1,0 +1,21 @@
+# White Mushroom Test — LLM configuration example.
+#
+# Copy to config.yaml (gitignored) and edit. This file is read by
+# `load_llm_config` only when `pyyaml` is installed — install the [web] extra
+# (`pip install -e ".[web]"`) to enable it. Without pyyaml, env vars and the
+# `overrides` dict (set by the Streamlit app from st.session_state / st.secrets)
+# are used instead, so the core stays stdlib-only.
+#
+# Precedence (highest wins):
+#   environment variables  >  overrides (session_state / st.secrets)
+#                              >  this file  >  built-in defaults
+llm:
+  provider: ollama              # ollama | openai
+  model: ""                     # e.g. "qwen3.5:9b" (ollama) or "gpt-4o" (openai)
+  host: http://localhost:11434  # ollama only — the Ollama base URL
+  base_url: https://api.openai.com/v1  # openai only — OpenAI-compatible base URL
+  timeout: 120                  # seconds
+  temperature: 0
+  # api_key: ""                 # openai only — leave empty here; put the key
+                                # in .streamlit/secrets.toml or an env var
+                                # (OPENAI_API_KEY / LLM_API_KEY) instead

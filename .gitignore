@@ -43,3 +43,9 @@ data/images/*.webp
 # files referenced by data/images/manifest.jsonl. The placeholders
 # used for smoke runs live here and are not committed.
 data/images/local/
+
+# v0.9: local LLM config + Streamlit secrets. Examples are committed
+# (config.yaml.example, .streamlit/secrets.toml.example); the real files
+# hold API keys / host choices and must never be committed.
+config.yaml
+.streamlit/secrets.toml
