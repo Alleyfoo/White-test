@@ -135,6 +135,56 @@ def test_run_cases_extra_options_flow_to_call(tmp_path: Path) -> None:
     assert seen["options"]["temperature"] == 0.0
 
 
+def test_build_ollama_payload_think_defaults_false() -> None:
+    """``think`` defaults False (thinking off) — the reliable default for
+    thinking models. The top-level ``think`` field is always present."""
+    case = _case(prompt="Is this edible?")
+    payload = orr.build_ollama_payload(
+        case, model="qwen3.5:9b", image_b64="AAAA", temperature=0.0,
+    )
+    assert payload["think"] is False
+
+
+def test_build_ollama_payload_think_true_opt_in() -> None:
+    """``think=True`` opts into the reasoning trace (top-level field)."""
+    case = _case(prompt="Is this edible?")
+    payload = orr.build_ollama_payload(
+        case, model="qwen3.5:9b", image_b64="AAAA", temperature=0.0, think=True,
+    )
+    assert payload["think"] is True
+
+
+def test_run_cases_think_flows_to_call(tmp_path: Path) -> None:
+    """``think`` reaches the Ollama payload; the default is False, ``True`` opts in."""
+    img_dir = tmp_path / "images"
+    _write_image(img_dir / "wm_001.jpg")
+    cases_path = tmp_path / "cases.jsonl"
+    cases_path.write_text(json.dumps(_case()) + "\n")
+    seen: list[bool] = []
+
+    def capturing_call(host, payload, timeout):
+        seen.append(payload["think"])
+        return "POISONOUS\nAmanita"
+
+    # Default -> thinking off.
+    orr.run_cases(
+        orr.load_cases(cases_path),
+        image_dir=img_dir, model="qwen3.5:9b",
+        output_path=tmp_path / "out1.jsonl",
+        error_path=tmp_path / "out1_errors.jsonl",
+        call_ollama_fn=capturing_call,
+    )
+    # Opt-in -> thinking on.
+    orr.run_cases(
+        orr.load_cases(cases_path),
+        image_dir=img_dir, model="qwen3.5:9b",
+        output_path=tmp_path / "out2.jsonl",
+        error_path=tmp_path / "out2_errors.jsonl",
+        call_ollama_fn=capturing_call, think=True,
+    )
+    assert seen == [False, True]
+
+
 # ---------------------------------------------------------------------------
 # 3. resolve_image_path uses case["filename"]
 # ---------------------------------------------------------------------------

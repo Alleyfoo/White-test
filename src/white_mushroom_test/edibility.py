@@ -194,11 +194,16 @@ def run_model_edibility(
     temperature: float,
     output_path: Path,
     error_path: Path,
+    think: bool = False,
 ) -> dict[str, EdibilityVerdict]:
     """Run the edibility prompt against every photo for one model; classify each.
 
     Reuses ``ollama_runner.run_cases`` (image resolution, encoding, errors,
     ``ModelOutputRow`` persistence). Returns ``{image_id: EdibilityVerdict}``.
+
+    ``think`` (default ``False``) is forwarded to ``run_cases``: thinking is
+    suppressed by default so a thinking model (qwen3.5:9b) cannot hang on a long
+    reasoning trace. Pass ``True`` to study the reasoning trace itself.
     """
     cases = build_edibility_cases(image_dir)
     if not cases:
@@ -218,6 +223,7 @@ def run_model_edibility(
         overwrite=True,
         resume=False,
         dry_run=False,
+        think=think,
     )
     rows = model_outputs.load_model_outputs(output_path)
     return {row.image_id: classify_edibility(row.response) for row in rows}
@@ -337,6 +343,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip the vision-capability probe (run every --model regardless).",
     )
     parser.add_argument(
+        "--think",
+        action="store_true",
+        help=(
+            "Enable the model's thinking/reasoning trace (Ollama `think`). "
+            "OFF by default: thinking models (qwen3.5:9b) can hang and return "
+            "empty answers when a long trace exhausts the output budget, so "
+            "thinking is suppressed unless set. Only meaningful for thinking "
+            "models. The probe-vet pre-check always runs with thinking off."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Emit machine-readable JSON instead of the report.",
@@ -381,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
                 temperature=args.temperature,
                 output_path=args.output_dir / f"edibility_{safe}.jsonl",
                 error_path=args.output_dir / f"edibility_{safe}_errors.jsonl",
+                think=args.think,
             )
         except LLMError as exc:
             print(f"error: {model!r}: {exc}", file=sys.stderr)

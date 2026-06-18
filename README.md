@@ -1188,10 +1188,10 @@ PYTHONPATH=src python -m white_mushroom_test.cli crop-probe --regenerate-crops \
     --image-dir data/images/local --crop-fraction 0.6
 
 # 2. Run the probe (probe-vetted; local Ollama models only, ':cloud' skipped).
-#    --max-tokens caps each call's output length (Ollama num_predict);
-#    recommended for thinking models (qwen3.5:9b) — without it a long reasoning
-#    trace can hang the run, since the urllib --timeout is per-recv and does not
-#    bound total generation time.
+#    Thinking is OFF by default (Ollama top-level `think: false`) so a thinking
+#    model's reasoning trace cannot hang the run or exhaust the output budget —
+#    see the v0.13 section below. --max-tokens caps each call's output length
+#    (Ollama num_predict) as a belt-and-braces cap.
 PYTHONPATH=src python -m white_mushroom_test.cli crop-probe \
     --model gemma3:4b --model qwen3.5:9b --max-tokens 4096 --timeout 120 --json
 ```
@@ -1205,7 +1205,8 @@ first, needs the `[image]` extra), `--manifest` / `--no-manifest` (read the
 (comma-separated `view` values to restrict the run to, e.g.
 `full_stem_base,side_view,underside` — the photos where the stem base is visible
 and the ablation is meaningful), and `--max-tokens` (cap each call's output
-length; recommended for thinking models — see the comment above).
+length; recommended for thinking models — see the comment above). `--think`
+opts into the model's reasoning trace (off by default — see v0.13).
 
 Crops live in `<image-dir>/_crops/` and the raw outputs in
 `data/model_outputs/crop_<model>_full.jsonl` + `_stemcut.jsonl`; both are
@@ -1225,6 +1226,46 @@ not a failure. `--view-filter` focuses the run on the photos where the ablation
 is meaningful. Ground truth stays withheld (`edibility_label_public: "withheld"`);
 this is model-behavior, not mushroom identification — the user (a forager) is
 the ground-truth judge, not the tool.
+
+## v0.13 Thinking Off by Default
+
+qwen3.5:9b is a *thinking* model: it emits a separate `thinking` trace whose
+tokens are counted against Ollama's `num_predict` output cap. When GPU
+non-determinism (even at temperature 0) triggers a long reasoning trace, the
+thinking exhausts the output budget and the answer comes back **empty** after a
+multi-minute hang — and the same call sometimes answers directly in ~0.4 s and
+sometimes thinks to nothing. The v0.11/v0.12 crop-probe could not get a clean
+qwen 10/10 because of this (`/no_think` via `/api/generate` is ignored, and the
+urllib per-recv timeout does not bound total generation while Ollama trickles
+bytes). The wall-clock-timeout fix the handoff proposed is no longer needed:
+Ollama 0.30.8 honors a top-level `think: false` request field, which suppresses
+the reasoning trace entirely (verified: qwen answers in ~0.4 s, no `thinking`
+field; gemma3:4b treats it as a no-op).
+
+So **thinking is now off by default** on every Ollama call path:
+`build_ollama_payload` sets `"think": false`, threaded through `run_cases`,
+`OllamaVisionClient` (and thus the Streamlit verifier), `run_model_edibility`,
+`run_crop_model`, and `probe_ollama_model`. The probe-vet pre-check always runs
+with thinking off — which also fixes the v0.12 probe-vet hang (a thinking
+probe-vet call used to block the run that followed, since Ollama serializes
+requests to one model).
+
+`--think` opts back into the reasoning trace on the task subcommands
+(`run-ollama`, `edibility`, `crop-probe`) — for studying the trace itself, or
+reproducing the v0.11 thinking-on behaviour. It only matters for thinking
+models: a non-thinking model (gemma3:4b) returns Ollama's
+`"does not support thinking"` error when `--think` is set. The config layer
+also accepts `llm.think` in `config.yaml` / overrides / `LLM_THINK` env
+(`1`/`true`/`yes`/`on`), default false.
+
+```bash
+# Default (thinking off): qwen answers directly, no hang.
+PYTHONPATH=src python -m white_mushroom_test.cli crop-probe \
+    --model qwen3.5:9b --no-probe --max-tokens 4096 --timeout 120 --json
+
+# Opt into the reasoning trace (thinking models only; reproduces v0.11 behaviour).
+PYTHONPATH=src python -m white_mushroom_test.cli crop-probe --model qwen3.5:9b --think --json
+```
 
 ## Limitations
 

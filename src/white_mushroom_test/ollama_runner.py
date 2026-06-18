@@ -109,6 +109,7 @@ def build_ollama_payload(
     temperature: float,
     *,
     extra_options: dict | None = None,
+    think: bool = False,
 ) -> dict:
     """Build the JSON body for ``POST /api/generate``.
 
@@ -120,6 +121,19 @@ def build_ollama_payload(
     model's output length so a long reasoning trace cannot hang the run
     (the urllib ``timeout`` is per-recv and does not bound total generation
     time when Ollama trickles bytes during a long generation).
+
+    ``think`` (default ``False``) sets Ollama's top-level ``think`` request
+    field. Thinking models (qwen3.5:9b) emit a separate ``thinking`` trace
+    whose tokens are counted against ``num_predict`` and can exhaust the
+    output budget, returning an empty answer after a multi-minute hang; GPU
+    non-determinism at temp 0 makes the same call sometimes answer directly
+    and sometimes think to nothing. ``think=False`` suppresses the trace
+    entirely (verified on Ollama 0.30.8: qwen answers in ~0.4 s with no
+    ``thinking`` field). Non-thinking models (gemma3:4b) treat it as a
+    no-op. Pass ``think=True`` only for thinking models when the reasoning
+    trace is itself the object of study — a non-thinking model then returns
+    Ollama's ``"does not support thinking"`` error, which is the caller's
+    responsibility.
     """
     options: dict = {"temperature": temperature}
     if extra_options:
@@ -129,6 +143,7 @@ def build_ollama_payload(
         "prompt": case["prompt"],
         "images": [image_b64],
         "stream": False,
+        "think": think,
         "options": options,
     }
 
@@ -298,6 +313,7 @@ def run_cases(
     dry_run: bool = False,
     call_ollama_fn: Callable[[str, dict, float], str] | None = None,
     extra_options: dict | None = None,
+    think: bool = False,
 ) -> RunSummary:
     """Run a sequence of cases against Ollama and write results.
 
@@ -338,6 +354,12 @@ def run_cases(
         ``{"num_predict": 4096}`` to cap a thinking model's output length).
         Forwarded to :func:`build_ollama_payload`; ``None`` leaves the
         payload with only ``temperature`` (the default, unchanged behaviour).
+    think:
+        Forwarded to :func:`build_ollama_payload` as the top-level ``think``
+        request field. ``False`` (the default) suppresses thinking-model
+        reasoning traces so a long trace cannot exhaust ``num_predict`` and
+        return an empty answer — the robust fix for qwen3.5:9b reliability.
+        ``True`` opts back into thinking (only meaningful for thinking models).
 
     Returns
     -------
@@ -390,6 +412,7 @@ def run_cases(
                     payload = build_ollama_payload(
                         case, model, image_b64, temperature,
                         extra_options=extra_options,
+                        think=think,
                     )
                     t0 = datetime.now(timezone.utc)
                     response = call(host, payload, timeout)
@@ -561,6 +584,19 @@ def _build_parser() -> argparse.ArgumentParser:
             "`white-mushroom-test probe`."
         ),
     )
+    parser.add_argument(
+        "--think",
+        action="store_true",
+        help=(
+            "Enable the model's thinking/reasoning trace (Ollama top-level "
+            "`think` field). OFF by default: thinking models (qwen3.5:9b) "
+            "can hang for minutes and return an empty answer when a long "
+            "thinking trace exhausts the output budget, so thinking is "
+            "suppressed unless this is set. Only meaningful for thinking "
+            "models; a non-thinking model (gemma3:4b) errors out with "
+            "'does not support thinking'."
+        ),
+    )
     return parser
 
 
@@ -623,6 +659,7 @@ def main(argv: list[str] | None = None) -> int:
             overwrite=args.overwrite,
             resume=args.resume,
             dry_run=args.dry_run,
+            think=args.think,
         )
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -77,6 +77,7 @@ class LLMConfig:
     api_key: str = ""
     timeout: float = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
+    think: bool = False
 
 
 def _parse_float(value, default: float) -> float:
@@ -98,7 +99,7 @@ def load_llm_config(
 
     Environment variables: ``LLM_PROVIDER``, ``OLLAMA_HOST``, ``OLLAMA_MODEL``,
     ``OPENAI_BASE_URL``, ``OPENAI_API_KEY`` (or ``LLM_API_KEY``),
-    ``LLM_TIMEOUT``, ``LLM_TEMPERATURE``.
+    ``LLM_TIMEOUT``, ``LLM_TEMPERATURE``, ``LLM_THINK``.
 
     ``config_path`` defaults to ``config.yaml`` in the current directory. The
     file is optional; if ``pyyaml`` is not installed (the core is stdlib-only)
@@ -131,6 +132,8 @@ def load_llm_config(
             cfg.timeout = _parse_float(layer["timeout"], cfg.timeout)
         if layer.get("temperature") is not None:
             cfg.temperature = _parse_float(layer["temperature"], cfg.temperature)
+        if layer.get("think") is not None:
+            cfg.think = bool(layer["think"])
 
     # Environment variables — highest precedence.
     if v := os.environ.get("LLM_PROVIDER"):
@@ -149,6 +152,8 @@ def load_llm_config(
         cfg.timeout = _parse_float(v, cfg.timeout)
     if v := os.environ.get("LLM_TEMPERATURE"):
         cfg.temperature = _parse_float(v, cfg.temperature)
+    if v := os.environ.get("LLM_THINK"):
+        cfg.think = v.lower() in ("1", "true", "yes", "on")
 
     if cfg.provider not in _KNOWN_PROVIDERS:
         raise LLMError(
@@ -204,19 +209,22 @@ class OllamaVisionClient:
         timeout: float = DEFAULT_TIMEOUT,
         temperature: float = DEFAULT_TEMPERATURE,
         *,
+        think: bool = False,
         call_ollama_fn: Callable[[str, dict, float], str] | None = None,
     ) -> None:
         self.host = host
         self.model = model
         self.timeout = timeout
         self.temperature = temperature
+        self.think = think
         self._call = call_ollama_fn or call_ollama
 
     def generate_text(self, prompt: str, image_b64: str) -> str:
         if not self.model:
             raise LLMError("no Ollama model configured (set model=...)")
         payload = build_ollama_payload(
-            {"prompt": prompt}, self.model, image_b64, self.temperature
+            {"prompt": prompt}, self.model, image_b64, self.temperature,
+            think=self.think,
         )
         try:
             return self._call(self.host, payload, self.timeout)
@@ -321,7 +329,7 @@ def make_llm_client(cfg: LLMConfig):
     if cfg.provider == _PROVIDER_OLLAMA:
         return OllamaVisionClient(
             host=cfg.host, model=cfg.model, timeout=cfg.timeout,
-            temperature=cfg.temperature,
+            temperature=cfg.temperature, think=cfg.think,
         )
     if cfg.provider == _PROVIDER_OPENAI:
         return OpenAIVisionClient(

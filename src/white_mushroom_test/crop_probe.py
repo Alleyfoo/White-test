@@ -133,6 +133,7 @@ def run_crop_model(
     output_dir: Path,
     only_stems: set[str] | None = None,
     max_tokens: int | None = None,
+    think: bool = False,
 ) -> dict[str, dict[str, object]]:
     """Run the edibility prompt against the FULL and STEM-CROPPED photos for one
     model; classify each; pair by ``image_id``.
@@ -147,6 +148,14 @@ def run_crop_model(
     Recommended for thinking models (qwen3.5:9b): without it a long reasoning
     trace can run for many minutes because the urllib ``timeout`` is per-recv
     and does not bound total generation time. ``None`` = no cap.
+
+    ``think`` (default ``False``) suppresses the thinking-model reasoning trace
+    (Ollama top-level ``think``). This is the robust fix for qwen3.5:9b — without
+    it a long trace can exhaust ``num_predict`` and return an empty answer after
+    a multi-minute hang, and GPU non-determinism at temp 0 makes that
+    nondeterministic. With thinking off, qwen answers directly in ~0.4 s.
+    Pass ``True`` to study the reasoning trace (only meaningful for thinking
+    models). The probe-vet pre-check always runs with thinking off.
     """
     cases = build_crop_cases(image_dir, crops_dir, only_stems=only_stems)
     full_cases = [c for c in cases if c["variant"] == FULL]
@@ -173,13 +182,13 @@ def run_crop_model(
         full_cases, image_dir, model, full_out, full_err,
         host=host, timeout=timeout, temperature=temperature,
         start=0, limit=None, overwrite=True, resume=False, dry_run=False,
-        extra_options=extra_options,
+        extra_options=extra_options, think=think,
     )
     ollama_runner.run_cases(
         stemcut_cases, crops_dir, model, cut_out, cut_err,
         host=host, timeout=timeout, temperature=temperature,
         start=0, limit=None, overwrite=True, resume=False, dry_run=False,
-        extra_options=extra_options,
+        extra_options=extra_options, think=think,
     )
     full_v = {
         row.image_id: edibility.classify_edibility(row.response)
@@ -438,6 +447,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--think",
+        action="store_true",
+        help=(
+            "Enable the model's thinking/reasoning trace (Ollama `think`). "
+            "OFF by default: thinking models (qwen3.5:9b) can hang and return "
+            "empty answers when a long trace exhausts the output budget, so "
+            "thinking is suppressed unless set. Only meaningful for thinking "
+            "models. The probe-vet pre-check always runs with thinking off."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("data/model_outputs"),
@@ -547,7 +567,7 @@ def main(argv: list[str] | None = None) -> int:
                 model, args.image_dir, crops_dir,
                 host=args.host, timeout=args.timeout, temperature=args.temperature,
                 output_dir=args.output_dir, only_stems=only_stems,
-                max_tokens=args.max_tokens,
+                max_tokens=args.max_tokens, think=args.think,
             )
         except LLMError as exc:
             print(f"error: {model!r}: {exc}", file=sys.stderr)

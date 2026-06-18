@@ -241,6 +241,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "`white-mushroom-test probe`."
         ),
     )
+    run.add_argument(
+        "--think",
+        action="store_true",
+        help=(
+            "Enable the model's thinking/reasoning trace (Ollama `think`). "
+            "OFF by default: thinking models (qwen3.5:9b) can hang and return "
+            "empty answers when a long trace exhausts the output budget, so "
+            "thinking is suppressed unless set. Only meaningful for thinking "
+            "models; a non-thinking model (gemma3:4b) errors out."
+        ),
+    )
 
     probe = sub.add_parser(
         "probe",
@@ -339,6 +350,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     ed.add_argument(
+        "--think",
+        action="store_true",
+        help=(
+            "Enable the model's thinking/reasoning trace (Ollama `think`). "
+            "OFF by default: thinking models (qwen3.5:9b) can hang and return "
+            "empty answers when a long trace exhausts the output budget, so "
+            "thinking is suppressed unless set. The probe-vet pre-check always "
+            "runs with thinking off."
+        ),
+    )
+    ed.add_argument(
         "--json",
         action="store_true",
         help="Emit machine-readable JSON instead of the report.",
@@ -410,6 +432,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "Cap each call's output length (Ollama num_predict). Recommended for "
             "thinking models (qwen3.5:9b) to stop a long reasoning trace hanging "
             "the run. None = no cap (default)."
+        ),
+    )
+    crop.add_argument(
+        "--think",
+        action="store_true",
+        help=(
+            "Enable the model's thinking/reasoning trace (Ollama `think`). "
+            "OFF by default: thinking models (qwen3.5:9b) can hang and return "
+            "empty answers when a long trace exhausts the output budget, so "
+            "thinking is suppressed unless set. The probe-vet pre-check always "
+            "runs with thinking off."
         ),
     )
     crop.add_argument(
@@ -533,7 +566,7 @@ def _summarise(results) -> Counter:
 def _print_human(results, prompts: Path, outputs: Path) -> None:
     counts = _summarise(results)
     total = len(results)
-    print(f"White Mushroom Test — v0.12")
+    print(f"White Mushroom Test — v0.13")
     print(f"  prompts: {prompts}")
     print(f"  outputs: {outputs}")
     print(f"  total:   {total}")
@@ -671,6 +704,8 @@ def main(argv: list[str] | None = None) -> int:
             argv += ["--dry-run"]
         if args.probe_first:
             argv += ["--probe-first"]
+        if args.think:
+            argv += ["--think"]
         return ollama_runner.main(argv)
 
     if args.command == "probe":
@@ -697,6 +732,8 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if args.no_probe:
             argv += ["--no-probe"]
+        if args.think:
+            argv += ["--think"]
         if args.json:
             argv += ["--json"]
         return edibility.main(argv)
@@ -720,6 +757,8 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if args.max_tokens is not None:
             argv += ["--max-tokens", str(args.max_tokens)]
+        if args.think:
+            argv += ["--think"]
         if args.view_filter is not None:
             argv += ["--view-filter", args.view_filter]
         if args.regenerate_crops:

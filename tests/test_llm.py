@@ -32,7 +32,7 @@ NO_CONFIG = Path("__nonexistent_config_for_tests__.yaml")
 # an env value set it themselves with monkeypatch.setenv.
 LLM_ENV_VARS = [
     "LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_BASE_URL",
-    "OPENAI_API_KEY", "LLM_API_KEY", "LLM_TIMEOUT", "LLM_TEMPERATURE",
+    "OPENAI_API_KEY", "LLM_API_KEY", "LLM_TIMEOUT", "LLM_TEMPERATURE", "LLM_THINK",
 ]
 
 
@@ -93,6 +93,18 @@ def test_ollama_client_builds_payload_and_returns_response() -> None:
     assert payload["images"] == ["BASE64=="]
     assert payload["stream"] is False
     assert payload["options"]["temperature"] == 0.1
+    # Thinking is off by default (the reliable default for thinking models).
+    assert payload["think"] is False
+
+
+def test_ollama_client_think_opt_in_reaches_payload() -> None:
+    """``think=True`` is forwarded to the payload's top-level ``think`` field."""
+    stub = _OllamaStub(response="ok")
+    client = OllamaVisionClient(
+        host="http://x", model="qwen3.5:9b", think=True, call_ollama_fn=stub,
+    )
+    client.generate_text("p", "b")
+    assert stub.calls[0][1]["think"] is True
 
 
 def test_ollama_client_wraps_transport_error() -> None:
@@ -197,6 +209,7 @@ def test_load_llm_config_defaults() -> None:
     assert cfg.api_key == ""
     assert cfg.timeout == 120.0
     assert cfg.temperature == 0.0
+    assert cfg.think is False
 
 
 def test_load_llm_config_overrides() -> None:
@@ -236,6 +249,29 @@ def test_load_llm_config_env_timeout_parses(monkeypatch) -> None:
     monkeypatch.setenv("LLM_TIMEOUT", "90")
     cfg = load_llm_config(config_path=NO_CONFIG)
     assert cfg.timeout == 90.0
+
+
+def test_load_llm_config_env_think_enables(monkeypatch) -> None:
+    """``LLM_THINK=1`` (or true/yes/on) opts into thinking; default is off."""
+    monkeypatch.setenv("LLM_THINK", "true")
+    cfg = load_llm_config(config_path=NO_CONFIG)
+    assert cfg.think is True
+
+
+def test_load_llm_config_overrides_think(monkeypatch) -> None:
+    """The overrides layer can enable thinking; absent -> default False."""
+    cfg = load_llm_config(overrides={"think": True}, config_path=NO_CONFIG)
+    assert cfg.think is True
+    cfg2 = load_llm_config(overrides={}, config_path=NO_CONFIG)
+    assert cfg2.think is False
+
+
+def test_make_llm_client_ollama_passes_think() -> None:
+    """``make_llm_client`` forwards ``cfg.think`` to the Ollama client."""
+    client = make_llm_client(LLMConfig(provider="ollama", model="qwen", host="http://h",
+                                       think=True))
+    assert isinstance(client, OllamaVisionClient)
+    assert client.think is True
 
 
 def test_load_llm_config_unknown_provider_raises(monkeypatch) -> None:

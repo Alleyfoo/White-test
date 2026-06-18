@@ -303,9 +303,17 @@ def probe_ollama_model(
     *,
     timeout: float = DEFAULT_TIMEOUT,
     temperature: float = DEFAULT_TEMPERATURE,
+    think: bool = False,
 ) -> ProbeReport:
-    """Probe a single Ollama model (real ``call_ollama``; tests build their own client)."""
-    client = OllamaVisionClient(host, model, timeout=timeout, temperature=temperature)
+    """Probe a single Ollama model (real ``call_ollama``; tests build their own client).
+
+    ``think`` defaults ``False`` — the probe is a vision-capability vet, not the
+    task itself, so a thinking model's reasoning trace is suppressed to keep the
+    vet fast and reliable (a thinking trace can hang the probe and block the
+    run that follows, since Ollama serializes requests to one model).
+    """
+    client = OllamaVisionClient(host, model, timeout=timeout,
+                                temperature=temperature, think=think)
     return probe_client(client, model=model, provider="ollama")
 
 
@@ -314,10 +322,12 @@ def probe_ollama_models(
     *,
     timeout: float = DEFAULT_TIMEOUT,
     temperature: float = DEFAULT_TEMPERATURE,
+    think: bool = False,
 ) -> list[ProbeReport]:
     """List installed Ollama models and probe each."""
     models = _list_ollama_models(host, timeout)
-    return [probe_ollama_model(host, m, timeout=timeout, temperature=temperature) for m in models]
+    return [probe_ollama_model(host, m, timeout=timeout,
+                              temperature=temperature, think=think) for m in models]
 
 
 # ---------------------------------------------------------------------------

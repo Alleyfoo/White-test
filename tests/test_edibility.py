@@ -145,7 +145,7 @@ def test_cli_edibility_dispatch_reports_poisonous(monkeypatch, capsys, tmp_path:
         lambda *a, **k: ProbeReport("ollama", "stub:1", CAPABLE, [], None),
     )
 
-    def _fake_run(model, image_dir, *, host, timeout, temperature, output_path, error_path):
+    def _fake_run(model, image_dir, *, host, timeout, temperature, output_path, error_path, think=False):
         return {
             "wm_003": ed.EdibilityVerdict(ed.POISONOUS, "Amanita-like", "POISONOUS\n..."),
             "wm_001": ed.EdibilityVerdict(ed.EDIBLE, "champignon", "EDIBLE\n..."),

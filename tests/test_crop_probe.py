@@ -206,6 +206,41 @@ def test_run_crop_model_max_tokens_caps_output(monkeypatch, tmp_path: Path) -> N
     assert seen["options"].get("num_predict") == 4096
 
 
+def test_run_crop_model_think_defaults_false(monkeypatch, tmp_path: Path) -> None:
+    """``think`` defaults False (thinking off — the reliable default) and reaches
+    the Ollama payload's top-level ``think`` field; ``True`` opts in."""
+    image_dir = tmp_path / "imgs"
+    crops_dir = tmp_path / "crops"
+    out_dir = tmp_path / "out"
+    image_dir.mkdir()
+    crops_dir.mkdir()
+    full_b = b"\xff\xd8\xffFULL_wm_001"
+    cut_b = b"\xff\xd8\xffSTEMCUT_wm_001"
+    (image_dir / "wm_001.jpg").write_bytes(full_b)
+    (crops_dir / "wm_001_stemcut.jpg").write_bytes(cut_b)
+    seen: list[bool] = []
+
+    def fake_call(host, payload, timeout):
+        seen.append(payload["think"])
+        data = base64.b64decode(payload["images"][0])
+        return "POISONOUS\nAmanita" if data == full_b else "UNCERTAIN\n?"
+
+    monkeypatch.setattr(ollama_runner, "call_ollama", fake_call)
+    # Default -> thinking off (two calls: full + stemcut).
+    cp.run_crop_model(
+        "stub:1", image_dir, crops_dir,
+        host="http://x", timeout=10, temperature=0.0, output_dir=out_dir,
+    )
+    assert seen == [False, False]
+    seen.clear()
+    # Opt-in -> thinking on for both calls.
+    cp.run_crop_model(
+        "stub:1", image_dir, crops_dir,
+        host="http://x", timeout=10, temperature=0.0, output_dir=out_dir, think=True,
+    )
+    assert seen == [True, True]
+
+
 # ---------------------------------------------------------------------------
 # report
 # ---------------------------------------------------------------------------
@@ -266,7 +301,7 @@ def test_cli_crop_probe_dispatch_reports_flip(monkeypatch, capsys, tmp_path: Pat
     )
 
     def _fake_run(model, image_dir, crops_dir, *, host, timeout, temperature,
-                  output_dir, only_stems=None, max_tokens=None):
+                  output_dir, only_stems=None, max_tokens=None, think=False):
         return {
             "wm_001": {
                 "full": ed.EdibilityVerdict(ed.POISONOUS, "volva",
@@ -290,6 +325,37 @@ def test_cli_crop_probe_dispatch_reports_flip(monkeypatch, capsys, tmp_path: Pat
     assert rc == 0
     data = _json.loads(capsys.readouterr().out)
     assert data["models"]["stub:1"]["pairs"]["wm_001"]["category"] == cp.FLIPPED_P_TO_U
+
+
+def test_cli_crop_probe_dispatch_passes_think(monkeypatch, tmp_path: Path) -> None:
+    """The cli.py `--think` flag flows through to `run_crop_model`."""
+    from white_mushroom_test import cli
+
+    monkeypatch.setattr(
+        cp,
+        "probe_ollama_model",
+        lambda *a, **k: ProbeReport("ollama", "stub:1", CAPABLE, [], None),
+    )
+    received: dict = {}
+
+    def _fake_run(model, image_dir, crops_dir, *, host, timeout, temperature,
+                  output_dir, only_stems=None, max_tokens=None, think=False):
+        received["think"] = think
+        return {}
+
+    monkeypatch.setattr(cp, "run_crop_model", _fake_run)
+
+    rc = cli.main([
+        "crop-probe",
+        "--model", "stub:1",
+        "--image-dir", str(tmp_path),
+        "--crops-dir", str(tmp_path / "_crops"),
+        "--output-dir", str(tmp_path),
+        "--no-manifest",
+        "--think",
+    ])
+    assert rc == 0
+    assert received["think"] is True
 
 
 def test_cli_crop_probe_skips_non_capable_model(monkeypatch, capsys, tmp_path: Path) -> None:
