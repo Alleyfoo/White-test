@@ -2,9 +2,13 @@
 # Theme only — kept minimal. See https://docs.streamlit.io/library/api-reference
 
 [server]
-# The verifier is a local single-user tool; keep the browser from auto-opening
-# on headless / remote setups. Streamlit still prints the local URL.
-headless = false
+# Headless: do NOT auto-open a browser, and do NOT show the first-run email
+# onboarding prompt. The prompt reads stdin and blocks the server from binding
+# on platforms that allocate a pseudo-TTY for log capture (e.g. Streamlit
+# Community Cloud), producing a persistent /healthz connection-refused. Setting
+# headless=true suppresses that prompt so the server boots cleanly. Streamlit
+# still prints the local URL either way.
+headless = true
 
 [theme]
 base = "light"
