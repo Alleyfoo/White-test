@@ -1,0 +1,11 @@
+# Pinned for Streamlit Community Cloud, which reads this file (not pyproject
+# extras) and pip-installs it into the app's environment. Mirrors the
+# [web] + [image] optional-dependencies in pyproject.toml so the Cloud env
+# matches local (`pip install -e ".[web,image]"`).
+#
+# The core white_mushroom_test package is stdlib-only, so the app boots with
+# just `streamlit`; pyyaml + Pillow are listed so the config layer can read
+# config.yaml and the Crop tab can crop an uploaded image in-memory.
+streamlit>=1.32
+pyyaml>=6.0
+Pillow>=10.0
