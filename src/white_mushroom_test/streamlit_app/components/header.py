@@ -77,9 +77,18 @@ def _render_ollama(cfg) -> None:
 
     if not models:
         st.markdown(
-            f'<div style="font-size:12px;color:#8E867B;margin-bottom:8px;">'
+            f'<div style="font-size:12px;color:#8E867B;margin-bottom:4px;">'
             f'Ollama not reachable at <code>{cfg.host}</code>.</div>',
             unsafe_allow_html=True,
+        )
+        st.caption(
+            "If the app runs somewhere that can't reach that host (e.g. this "
+            "is Streamlit Cloud but your Ollama is on your laptop), point the "
+            "**Host** field above at a reachable URL — e.g. an https tunnel to "
+            "your Ollama (`ngrok http 11434` with `OLLAMA_HOST=0.0.0.0:11434 "
+            "OLLAMA_ORIGINS=* ollama serve`). The model list populates once the "
+            "host is reachable from here. Or run the app locally, where "
+            "`http://localhost:11434` works directly."
         )
         new_model = st.text_input(
             "Model (free text)", value=cfg.model, key="llm_model_text",
