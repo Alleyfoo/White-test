@@ -102,3 +102,36 @@ def generate_stem_crops(
         stem_crop(src, dst, keep_fraction=keep_fraction)
         out.append(dst)
     return out
+
+
+def stem_crop_bytes(
+    data: bytes,
+    *,
+    keep_fraction: float = DEFAULT_KEEP_FRACTION,
+) -> bytes:
+    """In-memory stem crop: keep the top ``keep_fraction`` of ``data`` (an image
+    file's bytes) and return the cropped image re-encoded as JPEG bytes.
+
+    The Streamlit Crop tab uses this to crop an uploaded image without writing
+    it to disk (the file-based ``stem_crop`` / ``generate_stem_crops`` serve the
+    CLI probe). The output is always JPEG so it embeds cleanly in the Ollama /
+    OpenAI payloads (which assume ``image/jpeg``); a PNG upload is transcoded.
+    Raises :class:`LLMError` (via ``_require_pil``) if Pillow is absent, and
+    ``ValueError`` if ``keep_fraction`` is out of (0, 1) — validated before any
+    Pillow import, matching ``stem_crop``.
+    """
+    if not 0.0 < keep_fraction < 1.0:
+        raise ValueError(f"keep_fraction must be in (0, 1); got {keep_fraction}")
+    Image = _require_pil()
+    import io
+    with Image.open(io.BytesIO(data)) as im:
+        w, h = im.size
+        new_h = max(1, int(round(h * keep_fraction)))
+        cropped = im.crop((0, 0, w, new_h))
+        buf = io.BytesIO()
+        # RGB is the safe common denominator; flatten RGBA/Palette to RGB so
+        # JPEG save does not raise on a mode it cannot encode.
+        if cropped.mode not in ("RGB", "L"):
+            cropped = cropped.convert("RGB")
+        cropped.save(buf, format="JPEG")
+        return buf.getvalue()

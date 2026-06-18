@@ -197,11 +197,29 @@ See [`scoring/rubric.md`](scoring/rubric.md) for the full rubric.
 
 ## Web app
 
-The project also ships a **single-page Streamlit verifier** — the same scorer,
-interactive: pick a mushroom photo + a prompt + a model (local Ollama **or** your
-own OpenAI key), run the model, and see the response, the verdict badge, which
-scorer patterns fired, and a per-axis breakdown. It is the project's long-term
-home for ad-hoc verification against an image.
+The project also ships a **Streamlit app** — three tabs that turn the offline
+probes into something you can drive from a browser, against a local Ollama
+model **or** your own OpenAI key. It is the project's public face for the
+thesis: *don't take my word for it — run the model on your photo and watch the
+answer vary.*
+
+- **Verify** — the interactive scorer. Pick a mushroom photo + a prompt + a
+  model, run it, and see the response, the verdict badge, which scorer
+  patterns fired, and a per-axis breakdown. The long-term home for ad-hoc
+  verification against an image.
+- **Edibility** — the v0.11 belief probe. Asks the model the neutral edibility
+  question (POISONOUS / EDIBLE / UNCERTAIN) and shows the verdict, the
+  best-effort species guess, and the reason. **Compare all pulled models**
+  fans the same prompt out across every installed non-`:cloud` Ollama model
+  (thinking off) and shows a table of per-model verdicts on the *same photo* —
+  so you can watch the models disagree.
+- **Crop** — the v0.12 stem-hidden probe. Crops the bottom of the photo
+  (hiding the stem base — the Amanita volva), then asks the edibility question
+  on the full photo and on the stem-hidden crop, and shows whether the verdict
+  flipped. A flip away from POISONOUS when the stem is hidden means the model
+  was reading the stem, not the mushroom.
+
+None of the tabs identify mushrooms or give eating advice — each one says so.
 
 ### Install + run
 
@@ -210,10 +228,16 @@ pip install -e ".[web]"   # pulls in streamlit + pyyaml (optional extra)
 streamlit run streamlit_app.py
 ```
 
-The core package stays stdlib-only — the `[web]` extra is optional, so a plain
-`pip install -e .` and the default `pytest` run do not require it. The
-Streamlit smoke test in `tests/test_streamlit_app.py` is gated on
-`pytest.importorskip("streamlit")` and skips when the extra is absent.
+The Crop tab also needs Pillow for in-memory cropping:
+
+```bash
+pip install -e ".[web,image]"
+```
+
+The core package stays stdlib-only — the `[web]` / `[image]` extras are
+optional, so a plain `pip install -e .` and the default `pytest` run do not
+require them. The Streamlit smoke test in `tests/test_streamlit_app.py` is
+gated on `pytest.importorskip("streamlit")` and skips when the extra is absent.
 
 ### Provider + keys
 
@@ -228,22 +252,26 @@ Streamlit smoke test in `tests/test_streamlit_app.py` is gated on
 
 Config layers (highest wins): environment variables > live ⚙ Model choices >
 `.streamlit/secrets.toml` `[llm]` > `config.yaml` `llm:` (see
-`config.yaml.example`) > built-in defaults.
+`config.yaml.example`) > built-in defaults. Thinking is **off by default** in
+the app (the v0.13 change); turn it on with the `LLM_THINK` env var if you want
+the thinking trace for a single-model run. The Compare-all fan-out always runs
+thinking-off, matching the CLI probes.
 
 ### Image + prompt sources
 
 - **Image**: upload a `.jpg` / `.png` / `.webp` file, or — if you have dropped
   the manifest's image files into `data/images/local/` (they are gitignored) —
-  pick a known photo from `data/images/manifest.jsonl`.
-- **Prompt**: pick one of the 10 benchmark prompts from `data/prompts.jsonl`
-  (sets the real `prompt_id` + `category`, so the acute-category checks run),
-  or type a freeform prompt (uses `category=None` and skips the acute checks —
-  pick a known prompt for full scoring).
+  pick a known photo from `data/images/manifest.jsonl`. The same picker is
+  shared across all three tabs.
+- **Prompt** (Verify tab): pick one of the 10 benchmark prompts from
+  `data/prompts.jsonl` (sets the real `prompt_id` + `category`, so the
+  acute-category checks run), or type a freeform prompt (uses `category=None`
+  and skips the acute checks — pick a known prompt for full scoring).
 
 ### Export
 
-Each Run offers a **Download as model-output row** button that writes a valid
-v0.3 `ModelOutputRow` (`runner="web_ui_export"`) — feed it to
+The Verify tab's Run offers a **Download as model-output row** button that
+writes a valid v0.3 `ModelOutputRow` (`runner="web_ui_export"`) — feed it to
 `white-mushroom-test score` / `report` to re-score offline.
 
 ## v0.2 image manifest pilot

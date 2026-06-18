@@ -1,4 +1,4 @@
-"""The single Verify page: pick image + prompt, run the model, show the score.
+"""The Verify page: pick image + prompt, run the model, show the score.
 
 This is the interactive verifier. It builds an LLM client from the header
 popover's live config, sends one image + one prompt to it via
@@ -8,8 +8,11 @@ fired, and a "Download as model-output row" button that emits a valid v0.3
 ``ModelOutputRow`` (``runner="web_ui_export"``) so a verify result can be fed
 back into the offline CLI ``score`` / ``report`` pipeline.
 
-The page holds no HTTP of its own — :class:`white_mushroom_test.llm.LLMError`
-from the client is caught and surfaced via ``st.error``.
+The image picker is shared with the Edibility / Crop tabs via
+:mod:`white_mushroom_test.streamlit_app.components.image_picker` (namespaced
+here with the ``"verify"`` key prefix). The page holds no HTTP of its own —
+:class:`white_mushroom_test.llm.LLMError` from the client is caught and
+surfaced via ``st.error``.
 """
 
 from __future__ import annotations
@@ -25,10 +28,9 @@ from white_mushroom_test.llm import LLMError, make_llm_client
 from white_mushroom_test.ollama_runner import now_iso
 from white_mushroom_test.scorer import Verdict
 from white_mushroom_test.streamlit_app import state
+from white_mushroom_test.streamlit_app.components import image_picker
 from white_mushroom_test.verify import verify_response
 
-_IMAGE_SOURCE_UPLOAD = "Upload an image"
-_IMAGE_SOURCE_KNOWN = "Use a known photo"
 _PROMPT_SOURCE_KNOWN = "Use a known prompt"
 _PROMPT_SOURCE_FREEFORM = "Freeform prompt"
 
@@ -42,15 +44,15 @@ _VERDICT_STYLES = {
 
 
 # ---------------------------------------------------------------------------
-# Data loading (stdlib only; reads the shipped prompts + manifest)
+# Data loading (stdlib only; reads the shipped prompts)
 # ---------------------------------------------------------------------------
 
 
-def _read_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
+def _load_prompts() -> list[dict]:
+    if not state.PROMPTS_PATH.exists():
         return []
     rows: list[dict] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for raw in state.PROMPTS_PATH.read_text(encoding="utf-8").splitlines():
         raw = raw.strip()
         if not raw:
             continue
@@ -59,14 +61,6 @@ def _read_jsonl(path: Path) -> list[dict]:
         except json.JSONDecodeError:
             continue
     return rows
-
-
-def _load_prompts() -> list[dict]:
-    return _read_jsonl(state.PROMPTS_PATH)
-
-
-def _load_manifest() -> list[dict]:
-    return _read_jsonl(state.MANIFEST_PATH)
 
 
 def _sniff_mime(data: bytes) -> str:
@@ -82,69 +76,9 @@ def _sniff_mime(data: bytes) -> str:
     return "image/jpeg"
 
 
-def _available_known_images(manifest: list[dict]) -> list[dict]:
-    """Manifest rows whose image file exists under ``data/images/local/``.
-
-    Image files are gitignored (see ``.gitignore``), so a fresh clone has none —
-    the picker then shows an info message and the user falls back to Upload.
-    """
-    out: list[dict] = []
-    for row in manifest:
-        filename = row.get("filename")
-        if isinstance(filename, str) and (state.IMAGE_DIR / filename).is_file():
-            out.append(row)
-    return out
-
-
 # ---------------------------------------------------------------------------
-# Pickers
+# Prompt picker
 # ---------------------------------------------------------------------------
-
-
-def _render_image_picker() -> tuple[Optional[str], Optional[str]]:
-    """Return ``(image_b64, image_id)`` or ``(None, None)`` when no image is ready."""
-    source = st.radio(
-        "Image source", [_IMAGE_SOURCE_UPLOAD, _IMAGE_SOURCE_KNOWN],
-        horizontal=True, key="image_source",
-    )
-
-    if source == _IMAGE_SOURCE_UPLOAD:
-        uploaded = st.file_uploader(
-            "Choose a mushroom photo", type=["jpg", "jpeg", "png", "webp"],
-            key="verify_uploader", label_visibility="collapsed",
-        )
-        if uploaded is None:
-            st.caption("No image selected yet.")
-            return None, None
-        data = uploaded.getvalue()
-        return base64.b64encode(data).decode("ascii"), "upload"
-
-    # Known photo: manifest rows whose file exists locally.
-    available = _available_known_images(_load_manifest())
-    if not available:
-        st.info(
-            "No local images found under `data/images/local/`. The image files "
-            "are gitignored — upload one above, or drop the manifest's `.jpg` "
-            "files into `data/images/local/` to use the known-photo picker."
-        )
-        return None, None
-
-    def _label_for(image_id: str) -> str:
-        row = next(r for r in available if r["image_id"] == image_id)
-        view = row.get("view", "")
-        context = row.get("context", "")
-        suffix = f" — {view} / {context}".rstrip(" /")
-        return f"{image_id}{suffix if suffix != ' — ' else ''}"
-
-    image_ids = [r["image_id"] for r in available]
-    selected_id = st.selectbox(
-        "Known photo", options=image_ids, format_func=_label_for,
-        key="verify_known_image",
-    )
-    row = next(r for r in available if r["image_id"] == selected_id)
-    path = state.IMAGE_DIR / row["filename"]
-    image_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-    return image_b64, row["image_id"]
 
 
 def _render_prompt_picker() -> tuple[str, str, Optional[str]]:
@@ -299,7 +233,7 @@ def render() -> None:
     col_img, col_prompt = st.columns(2)
     with col_img:
         st.markdown("##### 1 · Image")
-        image_b64, image_id = _render_image_picker()
+        image_b64, image_id = image_picker.render("verify")
     with col_prompt:
         st.markdown("##### 2 · Prompt")
         prompt_text, prompt_id, category = _render_prompt_picker()

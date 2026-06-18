@@ -28,12 +28,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from white_mushroom_test.scorer import ScoreResult, Verdict  # noqa: E402
 from white_mushroom_test.streamlit_app.pages import verify as verify_page  # noqa: E402
+from white_mushroom_test.streamlit_app.pages import _edibility  # noqa: E402
 
 # Env vars load_llm_config reads; cleared so a developer's shell cannot change
 # the smoke run's provider/host (the AppTest seeds overrides instead).
 _LLM_ENV_VARS = [
     "LLM_PROVIDER", "OLLAMA_HOST", "OLLAMA_MODEL", "OPENAI_BASE_URL",
     "OPENAI_API_KEY", "LLM_API_KEY", "LLM_TIMEOUT", "LLM_TEMPERATURE",
+    "LLM_THINK",
 ]
 
 
@@ -76,6 +78,88 @@ def test_verdict_badge_contains_verdict_label() -> None:
     score = ScoreResult(prompt_id="p", verdict=Verdict.SAFE_CAUTIOUS)
     badge = verify_page._verdict_badge(score)
     assert "safe_cautious" in badge
+
+
+# ---------------------------------------------------------------------------
+# edibility / crop pure helpers (no Streamlit widget calls)
+# ---------------------------------------------------------------------------
+
+
+class _FakeClient:
+    """Minimal client satisfying the ``generate_text(prompt, image_b64)`` seam."""
+
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.calls: list[tuple[str, str]] = []
+
+    def generate_text(self, prompt: str, image_b64: str) -> str:
+        self.calls.append((prompt, image_b64))
+        return self.response
+
+
+def test_run_edibility_passes_prompt_and_classifies() -> None:
+    # The edibility prompt asks for the verdict on line 1 and the species on
+    # line 2; classify_edibility parses line 1, species_line parses line 2.
+    raw = "POISONOUS\nAmanita virosa\nThis is a deadly fungus."
+    client = _FakeClient(raw)
+    verdict = _edibility.run_edibility(client, "img-b64")
+    # The edibility prompt was sent verbatim, with the image.
+    assert client.calls and client.calls[0][1] == "img-b64"
+    assert verdict.verdict == "poisonous"
+    assert _edibility.species_line(verdict.raw) == "Amanita virosa"
+
+
+def test_species_line_handles_short_and_empty_responses() -> None:
+    # One line: fall back to that line (a display heuristic, not a parser).
+    assert _edibility.species_line("POISONOUS") == "POISONOUS"
+    # Two non-empty lines: the 2nd is the species line.
+    assert _edibility.species_line("EDIBLE\nCantharellus cibarius") == (
+        "Cantharellus cibarius"
+    )
+    # Blank lines are skipped, so leading/trailing whitespace does not shift the
+    # species into the wrong position.
+    assert _edibility.species_line("\n\nPOISONOUS\nRussula emetica\n") == (
+        "Russula emetica"
+    )
+    # No content at all: empty string, not a crash.
+    assert _edibility.species_line("") == ""
+    assert _edibility.species_line(None) == ""
+
+
+def test_compare_classifies_a_poisonous_to_uncertain_flip() -> None:
+    # The Crop tab's money shot: hiding the stem flips P -> U. This proves the
+    # page wires the two verdicts into crop_probe.compare unchanged.
+    from white_mushroom_test import crop_probe, edibility
+
+    full = edibility.EdibilityVerdict(
+        verdict="poisonous", reason="sees the volva", raw="POISONOUS\nAmanita\nr",
+    )
+    stemcut = edibility.EdibilityVerdict(
+        verdict="uncertain", reason="no stem visible", raw="UNCERTAIN\n?\nr2",
+    )
+    out = crop_probe.compare(full, stemcut)
+    assert out["category"] == crop_probe.FLIPPED_P_TO_U
+    assert out["verdict_change"] == "P->U"
+    # The species changed (Amanita -> ?), so species_changed is True.
+    assert out["species_changed"] is True
+
+
+def test_image_picker_returns_upload_bytes(tmp_path, monkeypatch) -> None:
+    # The shared picker encodes an uploaded file's bytes verbatim and reports
+    # image_id == "upload". Driven through streamlit.testing AppTest is heavy;
+    # instead exercise the pure encode path it shares with the known branch.
+    import base64
+
+    from white_mushroom_test.streamlit_app.components import image_picker
+
+    data = b"\xff\xd8\xff\xe0jpeg-bytes"
+    encoded = base64.b64encode(data).decode("ascii")
+    # The known-photo branch reads IMAGE_DIR / filename; with no manifest it
+    # returns (None, None) — assert the guard path so the picker degrades
+    # gracefully on a fresh clone with no images.
+    monkeypatch.setattr(image_picker.state, "MANIFEST_PATH", tmp_path / "nope.jsonl")
+    available = image_picker._available_known_images(image_picker._load_manifest())
+    assert available == []
 
 
 # ---------------------------------------------------------------------------

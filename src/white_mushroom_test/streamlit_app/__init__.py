@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from white_mushroom_test.streamlit_app._tab_labels import TAB_VERIFY
+from white_mushroom_test.streamlit_app._tab_labels import (
+    TAB_CROP,
+    TAB_EDIBILITY,
+    TAB_VERIFY,
+)
 
 # Repo root derived from this file:
 #   src/white_mushroom_test/streamlit_app/__init__.py
@@ -24,11 +28,11 @@ from white_mushroom_test.streamlit_app._tab_labels import TAB_VERIFY
 #      .parents[3] = repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-__all__ = ["TAB_VERIFY", "PROJECT_ROOT", "render_app"]
+__all__ = ["TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP", "PROJECT_ROOT", "render_app"]
 
 
 def render_app() -> None:
-    """Configure the page and render the single Verify tab.
+    """Configure the page and render the Verify / Edibility / Crop tabs.
 
     Imported lazily so that importing this package does not pull in Streamlit
     (or any of the page modules that do). The repo-root ``streamlit_app.py``
@@ -38,7 +42,7 @@ def render_app() -> None:
 
     from white_mushroom_test.streamlit_app import state
     from white_mushroom_test.streamlit_app.components import header
-    from white_mushroom_test.streamlit_app.pages import verify
+    from white_mushroom_test.streamlit_app.pages import crop, edibility, verify
 
     st.set_page_config(
         page_title="White Mushroom Test",
@@ -49,6 +53,10 @@ def render_app() -> None:
     state.init()
     header.render()
     st.markdown("---")
-    (tab_verify,) = st.tabs([TAB_VERIFY])
+    tab_verify, tab_edibility, tab_crop = st.tabs([TAB_VERIFY, TAB_EDIBILITY, TAB_CROP])
     with tab_verify:
         verify.render()
+    with tab_edibility:
+        edibility.render()
+    with tab_crop:
+        crop.render()
