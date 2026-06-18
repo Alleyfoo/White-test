@@ -197,12 +197,19 @@ See [`scoring/rubric.md`](scoring/rubric.md) for the full rubric.
 
 ## Web app
 
-The project also ships a **Streamlit app** — three tabs that turn the offline
-probes into something you can drive from a browser, against a local Ollama
-model **or** your own OpenAI key. It is the project's public face for the
-thesis: *don't take my word for it — run the model on your photo and watch the
-answer vary.*
+The project also ships a **Streamlit app** — four tabs that turn the offline
+probes into something you can drive from a browser. It is the project's public
+face for the thesis: *don't take my word for it — run the model on your photo
+and watch the answer vary.* The first tab needs no model at all.
 
+- **Demo** — the public landing tab. A curated, **pre-computed** set of
+  CC-licensed mushroom photos of *known* edibility (a destroying angel, a death
+  cap, a fly agaric, a chanterelle), each shown with what `qwen3.5:9b` and
+  `gemma3:4b` said about it — the edibility verdict on the full photo, and
+  whether the verdict flipped when the stem (the Amanita volva) was hidden. No
+  live model, no Ollama, no API key: it always loads, so it works on Streamlit
+  Community Cloud. The lesson: same photo, the models disagree, and a deadly
+  species can be called edible — don't trust an LLM (or Google Lens) for ID.
 - **Verify** — the interactive scorer. Pick a mushroom photo + a prompt + a
   model, run it, and see the response, the verdict badge, which scorer
   patterns fired, and a per-axis breakdown. The long-term home for ad-hoc
@@ -220,6 +227,8 @@ answer vary.*
   was reading the stem, not the mushroom.
 
 None of the tabs identify mushrooms or give eating advice — each one says so.
+The Demo tab's ground-truth labels are for *demonstrating model unreliability*,
+not for identification guidance.
 
 ### Install + run
 
@@ -262,7 +271,7 @@ thinking-off, matching the CLI probes.
 - **Image**: upload a `.jpg` / `.png` / `.webp` file, or — if you have dropped
   the manifest's image files into `data/images/local/` (they are gitignored) —
   pick a known photo from `data/images/manifest.jsonl`. The same picker is
-  shared across all three tabs.
+  shared across the Verify / Edibility / Crop tabs.
 - **Prompt** (Verify tab): pick one of the 10 benchmark prompts from
   `data/prompts.jsonl` (sets the real `prompt_id` + `category`, so the
   acute-category checks run), or type a freeform prompt (uses `category=None`
@@ -273,6 +282,32 @@ thinking-off, matching the CLI probes.
 The Verify tab's Run offers a **Download as model-output row** button that
 writes a valid v0.3 `ModelOutputRow` (`runner="web_ui_export"`) — feed it to
 `white-mushroom-test score` / `report` to re-score offline.
+
+### Curating the Demo tab
+
+The Demo tab is static — it reads `data/demo/demo.json`, which a maintainer
+regenerates with the curator (no viewer ever runs a model for it):
+
+1. Drop CC-licensed photos of *known* edibility into `data/demo/images/`
+   (e.g. from Wikimedia Commons — CC-BY-SA, attribution required). List each
+   photo's id / label / truth / filename / CC attribution in
+   `data/demo/photos.meta.json`.
+2. Run the curator against a local Ollama:
+   ```bash
+   pip install -e ".[web,image]"   # Pillow for the in-memory stem crop
+   PYTHONPATH=src python -m white_mushroom_test.demo_curate \
+       --models qwen3.5:9b gemma3:4b --keep-fraction 0.6 --json
+   ```
+   This runs the edibility prompt on each full photo and each stem-hidden crop
+   (thinking off), classifies both, records the full→stemcut flip via
+   `crop_probe.compare`, and writes `data/demo/demo.json` + the crop JPEGs. It
+   reuses the exact CLI probe path, so the demo verdicts match a CLI run.
+3. Commit `data/demo/images/` (the CC photos + crops), `photos.meta.json`, and
+   `demo.json`. The Demo tab then renders with no model running.
+
+The Demo tab degrades gracefully: if `demo.json` is absent (a fresh clone
+before curation), it shows a "not curated yet" message and the live tabs still
+work.
 
 ## v0.2 image manifest pilot
 

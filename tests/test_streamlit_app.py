@@ -180,5 +180,7 @@ def test_app_renders_without_exception() -> None:
     }
     at.run()
     assert not at.exception
+    # All four tabs render, with Demo first (the public landing tab).
+    assert [t.label for t in at.tabs] == ["Demo", "Verify", "Edibility", "Crop"]
     # The Run button is rendered (disabled until both image + prompt are set).
     assert len(at.button) >= 1

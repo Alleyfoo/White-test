@@ -5,7 +5,11 @@ tab only needs a new constant here plus a new ``pages/`` module — the entry
 point's ``st.tabs([...])`` list and the package ``__init__`` re-exports stay
 stable.
 
-The app has three tabs today:
+The app has four tabs today:
+- **Demo** — the public landing tab: curated, pre-computed, no-live-model. A
+  few CC-licensed photos of known edibility shown with what the models said
+  (the disagreement + the stem-hidden crop flip). Always loads; needs no
+  Ollama and no API key, so it works on Streamlit Community Cloud.
 - **Verify** — the rubric-scored safety verifier (one prompt → scored verdict).
 - **Edibility** — the v0.11 belief probe: run the edibility prompt, show
   POISONOUS/EDIBLE/UNCERTAIN + species + reason, and fan out across all pulled
@@ -16,8 +20,9 @@ The app has three tabs today:
 
 from __future__ import annotations
 
+TAB_DEMO = "Demo"
 TAB_VERIFY = "Verify"
 TAB_EDIBILITY = "Edibility"
 TAB_CROP = "Crop"
 
-__all__ = ["TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP"]
+__all__ = ["TAB_DEMO", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP"]
