@@ -17,6 +17,7 @@ from pathlib import Path
 from white_mushroom_test.streamlit_app._tab_labels import (
     TAB_CROP,
     TAB_DEMO,
+    TAB_DEMO_B,
     TAB_EDIBILITY,
     TAB_VERIFY,
 )
@@ -29,11 +30,11 @@ from white_mushroom_test.streamlit_app._tab_labels import (
 #      .parents[3] = repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-__all__ = ["TAB_DEMO", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP", "PROJECT_ROOT", "render_app"]
+__all__ = ["TAB_DEMO", "TAB_DEMO_B", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP", "PROJECT_ROOT", "render_app"]
 
 
 def render_app() -> None:
-    """Configure the page and render the Demo / Verify / Edibility / Crop tabs.
+    """Configure the page and render the Demo / Set B / Verify / Edibility / Crop tabs.
 
     Imported lazily so that importing this package does not pull in Streamlit
     (or any of the page modules that do). The repo-root ``streamlit_app.py``
@@ -55,11 +56,15 @@ def render_app() -> None:
     header.render()
     st.markdown("---")
     # Demo first — it is the public landing tab (no live model, always loads).
-    tab_demo, tab_verify, tab_edibility, tab_crop = st.tabs(
-        [TAB_DEMO, TAB_VERIFY, TAB_EDIBILITY, TAB_CROP]
+    # Set B sits right after it so the contrast (clean shots recognized vs
+    # ordinary views falling apart) is immediate.
+    tab_demo, tab_demo_b, tab_verify, tab_edibility, tab_crop = st.tabs(
+        [TAB_DEMO, TAB_DEMO_B, TAB_VERIFY, TAB_EDIBILITY, TAB_CROP]
     )
     with tab_demo:
         demo.render()
+    with tab_demo_b:
+        demo.render_set_b()
     with tab_verify:
         verify.render()
     with tab_edibility:

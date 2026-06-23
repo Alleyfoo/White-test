@@ -71,6 +71,15 @@ DEMO_DIR = PROJECT_ROOT / "data" / "demo"
 DEMO_JSON = DEMO_DIR / "demo.json"
 IMAGES_DIR = DEMO_DIR / "images"
 
+# Set B — the SAME five species as set A but in the "hard" views a forager
+# actually meets (young/egg, top-down, underside, alternate angle). Its own
+# demo.json + images dir, curated by the same demo_curate.py pointed at
+# data/demo_b/. The Demo tab renders one tab per set so the contrast
+# (clean pro shots recognized vs ordinary views falling apart) is immediate.
+DEMO_B_DIR = PROJECT_ROOT / "data" / "demo_b"
+DEMO_B_JSON = DEMO_B_DIR / "demo.json"
+DEMO_B_IMAGES_DIR = DEMO_B_DIR / "images"
+
 # Closed-set truth labels (mirrors what demo_curate writes; the UI colors by
 # these). Kept here so the loader does not depend on the curator module.
 TRUTH_DEADLY = "deadly"
@@ -297,6 +306,7 @@ def load_demo(
 
 __all__ = [
     "PROJECT_ROOT", "DEMO_DIR", "DEMO_JSON", "IMAGES_DIR",
+    "DEMO_B_DIR", "DEMO_B_JSON", "DEMO_B_IMAGES_DIR",
     "TRUTH_DEADLY", "TRUTH_POISONOUS", "TRUTH_EDIBLE",
     "License", "CropResult", "ModelResult", "DemoPrompt", "PromptResult", "DemoPhoto",
     "load_demo",

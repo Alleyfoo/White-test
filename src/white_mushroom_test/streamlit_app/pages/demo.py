@@ -20,6 +20,7 @@ shown under each photo.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
@@ -27,6 +28,10 @@ import streamlit as st
 from white_mushroom_test import crop_probe, edibility
 from white_mushroom_test.streamlit_app import demo_data
 from white_mushroom_test.streamlit_app.demo_data import (
+    DEMO_B_IMAGES_DIR,
+    DEMO_B_JSON,
+    DEMO_JSON,
+    IMAGES_DIR,
     DemoPhoto,
     DemoPrompt,
     ModelResult,
@@ -186,10 +191,14 @@ def _render_edibility_table(photo: DemoPhoto) -> None:
         return
     rows = []
     for r in photo.results:
+        # Some models answer the species line with a full hedge sentence rather
+        # than a name (esp. on set B's hard views); cap it so the table stays
+        # scannable. Set A's clean names are short and unaffected.
+        species = r.species or "—"
         rows.append({
             "model": r.model,
             "verdict": r.edibility or "— (call failed)",
-            "species guess": r.species or "—",
+            "species guess": (species[:80] + "…") if len(species) > 80 else species,
             "reason": (r.reason or "")[:160],
         })
     st.markdown("**What the models said (full photo):**")
@@ -334,7 +343,7 @@ def _render_photo(photo: DemoPhoto, demo_prompts: list[DemoPrompt]) -> None:
             else:
                 st.warning(
                     f"Image `{photo.image_path.name}` not found under "
-                    f"`data/demo/images/`."
+                    f"`{photo.image_path.parent}/`."
                 )
         with col_meta:
             st.markdown(f"### {photo.label}")
@@ -359,26 +368,29 @@ def _render_photo(photo: DemoPhoto, demo_prompts: list[DemoPrompt]) -> None:
         _render_prompt_section(photo, demo_prompts)
 
 
-def render() -> None:
-    st.subheader("🍄 What do the models say? (Spoiler: they disagree.)")
-    st.caption(
-        "A curated demo — **no live model, nothing to install**. A handful of "
-        "mushroom photos whose true edibility is known, alongside what two "
-        "vision models said about each. Same photo, different verdicts; a "
-        "deadly species called edible. The lesson: **do not trust an LLM (or "
-        "Google Lens) to identify a mushroom.** This is a demonstration of "
-        "unreliability, **not** identification guidance — when in doubt, ask a "
-        "local expert."
-    )
+def _render_set(
+    *,
+    demo_json: Path,
+    images_dir: Path,
+    subheader: str,
+    lead_caption: str,
+    not_curated_hint: str,
+) -> None:
+    """Render one curated demo set (set A or set B) from its ``demo.json``.
 
-    photos, meta = demo_data.load_demo()
+    The two sets share the same schema and the same render path — only the
+    source file, image dir, and the intro/empty-state copy differ. Set A is
+    the clean pro-photographer shots (recognized); set B is the same species
+    in the hard views a forager meets (young, top, underside, alternate) —
+    the contrast between the two tabs *is* the further proof the user asked
+    for.
+    """
+    st.subheader(subheader)
+    st.caption(lead_caption)
+
+    photos, meta = demo_data.load_demo(path=demo_json, images_dir=images_dir)
     if not photos:
-        st.info(
-            "The curated demo has not been generated yet. A maintainer runs "
-            "`python -m white_mushroom_test.demo_curate` after dropping the CC "
-            "photos into `data/demo/images/`. Until then, use the **Verify / "
-            "Edibility / Crop** tabs with your own model."
-        )
+        st.info(not_curated_hint)
         return
 
     models = meta.get("models", [])
@@ -400,4 +412,62 @@ def render() -> None:
     )
 
 
-__all__ = ["render"]
+def render() -> None:
+    """Render set A — the public landing tab (clean pro-photographer shots)."""
+    _render_set(
+        demo_json=DEMO_JSON,
+        images_dir=IMAGES_DIR,
+        subheader="🍄 What do the models say? (Spoiler: they disagree.)",
+        lead_caption=(
+            "A curated demo — **no live model, nothing to install**. A handful "
+            "of mushroom photos whose true edibility is known, alongside what "
+            "two vision models said about each. Same photo, different "
+            "verdicts; a deadly species called edible. The lesson: **do not "
+            "trust an LLM (or Google Lens) to identify a mushroom.** This is "
+            "a demonstration of unreliability, **not** identification guidance "
+            "— when in doubt, ask a local expert."
+        ),
+        not_curated_hint=(
+            "The curated demo has not been generated yet. A maintainer runs "
+            "`python -m white_mushroom_test.demo_curate` after dropping the CC "
+            "photos into `data/demo/images/`. Until then, use the **Verify / "
+            "Edibility / Crop** tabs with your own model."
+        ),
+    )
+
+
+def render_set_b() -> None:
+    """Render set B — the same species in the *hard* views a forager meets.
+
+    The counterpart to :func:`render`: set A's clean shots are recognized, so
+    set B asks the harder question — do the models still get it right on a
+    young 'egg', a top-down cap, an underside, an alternate angle? The same
+    photos that look unmistakable in set A become ambiguous here, and the
+    verdicts spread.
+    """
+    _render_set(
+        demo_json=DEMO_B_JSON,
+        images_dir=DEMO_B_IMAGES_DIR,
+        subheader="🍄 Same species, harder views — do the models still hold up?",
+        lead_caption=(
+            "Set B is the **same five species** as the Demo tab, but "
+            "photographed the way you actually meet them: a young 'egg' death "
+            "cap, a top-down fly agaric, an underside chanterelle, a young "
+            "panther cap, an alternate-angle destroying angel. Set A's clean "
+            "pro shots were recognized — these ordinary views give **very "
+            "different, often worse** verdicts. That is the further point: "
+            "**recognition on a textbook photo is not recognition.** No live "
+            "model; pre-computed like the Demo tab. Not identification guidance."
+        ),
+        not_curated_hint=(
+            "Set B has not been curated yet. A maintainer runs "
+            "`python -m white_mushroom_test.demo_curate --meta "
+            "data/demo_b/photos.meta.json --images-dir data/demo_b/images "
+            "--output data/demo_b/demo.json --prompts-meta "
+            "data/demo/prompts.meta.json` after dropping the set-B photos "
+            "into `data/demo_b/images/`. Until then, see the **Demo** tab."
+        ),
+    )
+
+
+__all__ = ["render", "render_set_b"]

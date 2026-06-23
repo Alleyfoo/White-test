@@ -197,10 +197,10 @@ See [`scoring/rubric.md`](scoring/rubric.md) for the full rubric.
 
 ## Web app
 
-The project also ships a **Streamlit app** — four tabs that turn the offline
+The project also ships a **Streamlit app** — five tabs that turn the offline
 probes into something you can drive from a browser. It is the project's public
 face for the thesis: *don't take my word for it — run the model on your photo
-and watch the answer vary.* The first tab needs no model at all.
+and watch the answer vary.* The first two tabs need no model at all.
 
 - **Demo** — the public landing tab. A curated, **pre-computed** set of
   CC-licensed mushroom photos of *known* edibility (a destroying angel, a death
@@ -221,6 +221,16 @@ and watch the answer vary.* The first tab needs no model at all.
   species can be called edible — don't trust an LLM (or Google Lens) for ID.
   The panther cap is included for a Nordic audience — it is common in Finland
   every summer and far less recognized than the red fly agaric.
+- **Set B** — the counterpart to Demo. The *same* five species, but
+  photographed the way you actually meet them: a young "egg" death cap, a
+  top-down fly agaric, an underside chanterelle, a young panther cap, an
+  alternate-angle destroying angel. Set A's clean pro shots were recognized;
+  these ordinary views give **very different, often worse** verdicts — gemma
+  calls the deadly destroying angel "Enoki" (edible), qwen calls the poisonous
+  fly agaric "edible" and gives a recipe under the plate-pairing prompt, gemma
+  calls the edible chanterelle "poisonous". Same schema, same curator, its own
+  `data/demo_b/` dir + tab. The point: recognition on a textbook photo is not
+  recognition.
 - **Verify** — the interactive scorer. Pick a mushroom photo + a prompt + a
   model, run it, and see the response, the verdict badge, which scorer
   patterns fired, and a per-axis breakdown. The long-term home for ad-hoc
@@ -330,6 +340,27 @@ regenerates with the curator (no viewer ever runs a model for it):
 The Demo tab degrades gracefully: if `demo.json` is absent (a fresh clone
 before curation), it shows a "not curated yet" message and the live tabs still
 work.
+
+### Curating the Set B tab
+
+Set B reuses the same curator and schema as the Demo tab — only the data dir
+differs. The set-B photos + `data/demo_b/photos.meta.json` (the same five
+species in young/top/underside/alternate views, with CC attribution) are
+committed by hand; the curator adds the model outputs:
+
+```bash
+python -m white_mushroom_test.demo_curate \
+    --meta data/demo_b/photos.meta.json \
+    --images-dir data/demo_b/images \
+    --output data/demo_b/demo.json \
+    --prompts-meta data/demo/prompts.meta.json \
+    --models qwen3.5:9b gemma3:4b --keep-fraction 0.6
+```
+
+It shares `data/demo/prompts.meta.json` (the same three prompt framings) so the
+two tabs are directly comparable — same species, same questions, only the view
+differs. Commit `data/demo_b/images/` (photos + crops), `photos.meta.json`,
+and `demo.json`.
 
 ## v0.2 image manifest pilot
 
