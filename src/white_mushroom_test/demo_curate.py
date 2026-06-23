@@ -31,7 +31,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from white_mushroom_test import crop_probe, edibility, images
+from white_mushroom_test import crop_probe, edibility, images, scorer
 from white_mushroom_test.llm import DEFAULT_OLLAMA_HOST, LLMError, OllamaVisionClient
 from white_mushroom_test.ollama_runner import now_iso
 from white_mushroom_test.streamlit_app.demo_data import (
@@ -43,6 +43,7 @@ from white_mushroom_test.streamlit_app.demo_data import (
 )
 
 META_PATH = DEMO_DIR / "photos.meta.json"
+PROMPTS_META_PATH = DEMO_DIR / "prompts.meta.json"
 OUTPUT_PATH = DEMO_DIR / "demo.json"
 
 # Closed-set truth labels the curator accepts (mirrors demo_data).
@@ -81,6 +82,89 @@ def load_meta(path: Path = META_PATH) -> list[dict]:
             )
         out.append(ph)
     return out
+
+
+# Prompt framings whose `prompt` is resolved at load time rather than stored
+# verbatim (so the neutral baseline can reuse edibility.PROMPT without drift).
+_PROMPT_REFS = {"edibility.PROMPT": lambda: edibility.PROMPT}
+
+
+def load_demo_prompts(path: Path = PROMPTS_META_PATH) -> list[dict]:
+    """Read the prompt-framing set for the 'same photo, different question' section.
+
+    Each entry has ``id`` / ``category`` / ``label`` / ``prompt``. A ``prompt``
+    of ``null`` with a ``prompt_ref`` (e.g. ``"edibility.PROMPT"``) is resolved
+    to the referenced prompt text at load time, so the neutral baseline reuses
+    :data:`edibility.PROMPT` verbatim and never drifts. Returns ``[]`` if the
+    file is absent — the curator then skips the prompt section and still
+    produces the edibility/crop demo (graceful on a partial setup).
+    """
+    if not path.is_file():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    raw_prompts = data.get("prompts", []) if isinstance(data, dict) else []
+    out: list[dict] = []
+    for p in raw_prompts:
+        if not isinstance(p, dict):
+            continue
+        prompt = p.get("prompt")
+        if prompt is None:
+            ref = str(p.get("prompt_ref", ""))
+            resolver = _PROMPT_REFS.get(ref)
+            if resolver is None:
+                raise ValueError(
+                    f"demo prompt {p.get('id')!r} has unresolved prompt_ref {ref!r}"
+                )
+            prompt = resolver()
+        out.append({
+            "id": str(p.get("id", "")),
+            "category": p.get("category"),
+            "label": str(p.get("label", "")),
+            "prompt": str(prompt),
+        })
+    return out
+
+
+def _truncate(text: str, n: int) -> str:
+    s = " ".join((text or "").split())
+    return (s[:n].rstrip() + "...") if len(s) > n else s
+
+
+def _run_prompt_set(
+    client: OllamaVisionClient,
+    image_b64: str,
+    demo_prompts: list[dict],
+) -> list[dict]:
+    """Run every demo prompt on one photo for one model; score each response.
+
+    Uses :func:`scorer.score_response` (the same rule-based scorer the Verify
+    tab + CLI use) so the verdict is comparable to a CLI run. Per-prompt
+    ``LLMError`` is caught and recorded as a missing verdict (``verdict=""``)
+    so one failure does not abort the set — the Demo tab shows that row as
+    “— (call failed)”.
+    """
+    rows: list[dict] = []
+    for dp in demo_prompts:
+        pid = dp["id"]
+        try:
+            raw = client.generate_text(dp["prompt"], image_b64)
+        except LLMError as exc:
+            rows.append({
+                "prompt_id": pid, "model": client.model, "verdict": "",
+                "cooking_advice": False, "refused": False,
+                "excerpt": f"(call failed: {exc})",
+            })
+            continue
+        score = scorer.score_response(pid, raw, category=dp.get("category"))
+        rows.append({
+            "prompt_id": pid,
+            "model": client.model,
+            "verdict": score.verdict.value,
+            "cooking_advice": bool(score.matched_cooking_advice),
+            "refused": bool(score.refused),
+            "excerpt": _truncate(raw, 160),
+        })
+    return rows
 
 
 def _run_one_model(
@@ -139,6 +223,8 @@ def build_demo_doc(
     keep_fraction: float,
     thinking: bool,
     generated_at: str,
+    demo_prompts: Optional[list[dict]] = None,
+    per_photo_prompt_results: Optional[dict[str, list[dict]]] = None,
 ) -> dict:
     """Assemble the demo.json document from meta + per-photo model results.
 
@@ -148,7 +234,16 @@ def build_demo_doc(
     missing) is still included, with an empty ``results`` list, so the meta is
     the source of truth and a partial run is visible rather than silently
     dropped.
+
+    ``demo_prompts`` (the resolved prompt-framing set from
+    :func:`load_demo_prompts`) is written at the top level, and
+    ``per_photo_prompt_results`` maps ``photo_id -> [PromptResult dict per
+    (prompt, model)]`` (from :func:`_run_prompt_set`) onto each photo's
+    ``prompt_results``. Both default to empty so an edibility-only run still
+    assembles a valid doc.
     """
+    demo_prompts = list(demo_prompts or [])
+    per_photo_prompt_results = per_photo_prompt_results or {}
     return {
         "generated_at": generated_at,
         "probe": {
@@ -157,8 +252,13 @@ def build_demo_doc(
             "thinking": thinking,
         },
         "models": list(models),
+        "demo_prompts": demo_prompts,
         "photos": [
-            {**ph, "results": per_photo_results.get(str(ph.get("id", "")), [])}
+            {
+                **ph,
+                "results": per_photo_results.get(str(ph.get("id", "")), []),
+                "prompt_results": per_photo_prompt_results.get(str(ph.get("id", "")), []),
+            }
             for ph in meta_photos
         ],
     }
@@ -173,6 +273,7 @@ def run_demo_curate(
     keep_fraction: float = images.DEFAULT_KEEP_FRACTION,
     think: bool = False,
     meta_path: Path = META_PATH,
+    prompts_meta_path: Path = PROMPTS_META_PATH,
     output_path: Path = OUTPUT_PATH,
     images_dir: Path = IMAGES_DIR,
 ) -> dict:
@@ -181,15 +282,27 @@ def run_demo_curate(
     Returns the written document. Photos whose image file is missing are
     skipped (with a printed note) rather than raising — so you can run the
     curator as soon as the first photo is in place and re-run as more arrive.
+
+    In addition to the edibility + stem-crop probe, runs the prompt-framing
+    set from ``prompts_meta_path`` on each (photo, model) and scores each
+    response with :func:`scorer.score_response`, recording it under each
+    photo's ``prompt_results``. If the prompts meta file is absent, the
+    prompt section is skipped and the doc is still valid (edibility/crop only).
     """
     meta_photos = load_meta(meta_path)
+    demo_prompts = load_demo_prompts(prompts_meta_path)
+    if not demo_prompts:
+        print(f"[info] no demo prompts at {prompts_meta_path}; "
+              f"skipping the prompt-framing section.")
     per_photo: dict[str, list[dict]] = {}
+    per_photo_prompts: dict[str, list[dict]] = {}
     for ph in meta_photos:
         pid = str(ph.get("id", ""))
         src = images_dir / str(ph.get("image", ""))
         if not src.is_file():
             print(f"[skip] {pid}: image not found at {src}")
             per_photo[pid] = []
+            per_photo_prompts[pid] = []
             continue
         data = src.read_bytes()
         full_b64 = base64.b64encode(data).decode("ascii")
@@ -206,6 +319,7 @@ def run_demo_curate(
             (images_dir / crop_rel).write_bytes(crop_bytes)
 
         rows: list[dict] = []
+        prompt_rows: list[dict] = []
         for model in models:
             client = OllamaVisionClient(
                 host, model, timeout=timeout,
@@ -213,12 +327,17 @@ def run_demo_curate(
             )
             print(f"[run ] {pid} · {model} …")
             rows.append(_run_one_model(client, full_b64, crop_b64))
+            if demo_prompts:
+                print(f"[prompts] {pid} · {model} …")
+                prompt_rows.extend(_run_prompt_set(client, full_b64, demo_prompts))
         per_photo[pid] = rows
+        per_photo_prompts[pid] = prompt_rows
 
     doc = build_demo_doc(
         meta_photos, per_photo,
         models=models, keep_fraction=keep_fraction,
         thinking=think, generated_at=now_iso(),
+        demo_prompts=demo_prompts, per_photo_prompt_results=per_photo_prompts,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -245,6 +364,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--think", action="store_true",
                    help="Enable model thinking (default off — the v0.13 default)")
     p.add_argument("--meta", type=Path, default=META_PATH)
+    p.add_argument("--prompts-meta", type=Path, default=PROMPTS_META_PATH,
+                   help="Prompt-framing set for the 'same photo, different "
+                        "question' section (default: data/demo/prompts.meta.json).")
     p.add_argument("--output", type=Path, default=OUTPUT_PATH)
     p.add_argument("--images-dir", type=Path, default=IMAGES_DIR)
     p.add_argument("--json", action="store_true", help="Print the written doc")
@@ -252,7 +374,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     doc = run_demo_curate(
         host=args.host, models=args.models, timeout=args.timeout,
         temperature=args.temperature, keep_fraction=args.keep_fraction,
-        think=args.think, meta_path=args.meta, output_path=args.output,
+        think=args.think, meta_path=args.meta,
+        prompts_meta_path=args.prompts_meta, output_path=args.output,
         images_dir=args.images_dir,
     )
     if args.json:
@@ -265,6 +388,7 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "META_PATH", "OUTPUT_PATH",
-    "load_meta", "build_demo_doc", "run_demo_curate", "main",
+    "META_PATH", "PROMPTS_META_PATH", "OUTPUT_PATH",
+    "load_meta", "load_demo_prompts",
+    "build_demo_doc", "run_demo_curate", "main",
 ]

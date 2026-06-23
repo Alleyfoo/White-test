@@ -125,6 +125,34 @@ class ModelResult:
 
 
 @dataclass(frozen=True)
+class DemoPrompt:
+    """One prompt framing in the 'same photo, different question' set."""
+
+    id: str
+    category: Optional[str]
+    label: str
+    prompt: str
+
+
+@dataclass(frozen=True)
+class PromptResult:
+    """One (prompt, model) response on one photo, scored by the rule-based scorer.
+
+    ``verdict`` is the scorer's ``Verdict`` value string (safe_refusal /
+    safe_cautious / unsafe / incomplete), or ``""`` if the call failed.
+    ``cooking_advice`` is True when the scorer's cooking-advice patterns matched
+    — the dangerous signal for a food-framing prompt on a deadly mushroom.
+    """
+
+    prompt_id: str
+    model: str
+    verdict: str
+    cooking_advice: bool = False
+    refused: bool = False
+    excerpt: str = ""
+
+
+@dataclass(frozen=True)
 class DemoPhoto:
     """One curated demo photo + every model's pre-computed verdicts."""
 
@@ -136,6 +164,7 @@ class DemoPhoto:
     crop_image_path: Path
     license: License
     results: tuple[ModelResult, ...] = field(default_factory=tuple)
+    prompt_results: tuple[PromptResult, ...] = field(default_factory=tuple)
 
     @property
     def image_exists(self) -> bool:
@@ -182,6 +211,26 @@ def _parse_result(data: dict) -> ModelResult:
     )
 
 
+def _parse_demo_prompt(data: dict) -> DemoPrompt:
+    return DemoPrompt(
+        id=str(data.get("id", "")),
+        category=data.get("category"),
+        label=str(data.get("label", "")),
+        prompt=str(data.get("prompt", "")),
+    )
+
+
+def _parse_prompt_result(data: dict) -> PromptResult:
+    return PromptResult(
+        prompt_id=str(data.get("prompt_id", "")),
+        model=str(data.get("model", "")),
+        verdict=str(data.get("verdict", "")),
+        cooking_advice=bool(data.get("cooking_advice", False)),
+        refused=bool(data.get("refused", False)),
+        excerpt=str(data.get("excerpt", "")),
+    )
+
+
 def _parse_photo(data: dict, images_dir: Path) -> DemoPhoto:
     image_rel = str(data.get("image", ""))
     crop_rel = str(data.get("crop_image", ""))
@@ -194,6 +243,9 @@ def _parse_photo(data: dict, images_dir: Path) -> DemoPhoto:
         crop_image_path=images_dir / crop_rel,
         license=_parse_license(data.get("license", {})),
         results=tuple(_parse_result(r) for r in data.get("results", []) if isinstance(r, dict)),
+        prompt_results=tuple(
+            _parse_prompt_result(r) for r in data.get("prompt_results", []) if isinstance(r, dict)
+        ),
     )
 
 
@@ -229,6 +281,9 @@ def load_demo(
         "generated_at": str(data.get("generated_at", "")),
         "models": list(data.get("models", [])),
         "probe": data.get("probe", {}) if isinstance(data.get("probe", {}), dict) else {},
+        "demo_prompts": [
+            _parse_demo_prompt(p) for p in data.get("demo_prompts", []) if isinstance(p, dict)
+        ],
     }
     return photos, meta
 
@@ -236,6 +291,6 @@ def load_demo(
 __all__ = [
     "PROJECT_ROOT", "DEMO_DIR", "DEMO_JSON", "IMAGES_DIR",
     "TRUTH_DEADLY", "TRUTH_POISONOUS", "TRUTH_EDIBLE",
-    "License", "CropResult", "ModelResult", "DemoPhoto",
+    "License", "CropResult", "ModelResult", "DemoPrompt", "PromptResult", "DemoPhoto",
     "load_demo",
 ]

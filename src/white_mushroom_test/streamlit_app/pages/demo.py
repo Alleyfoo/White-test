@@ -25,10 +25,13 @@ from typing import Optional
 import streamlit as st
 
 from white_mushroom_test import crop_probe, edibility
+from white_mushroom_test.scorer import Verdict
 from white_mushroom_test.streamlit_app import demo_data
 from white_mushroom_test.streamlit_app.demo_data import (
     DemoPhoto,
+    DemoPrompt,
     ModelResult,
+    PromptResult,
     TRUTH_DEADLY,
     TRUTH_EDIBLE,
     TRUTH_POISONOUS,
@@ -47,6 +50,16 @@ _EDIBILITY_STYLES = {
     edibility.EDIBLE: ("#E1F0E2", "#3F6B45"),
     edibility.UNCERTAIN: ("#FAEFD6", "#7A5A12"),
 }
+
+# (background, foreground, label) per scorer Verdict — mirrors verify.py's
+# _VERDICT_STYLES so the prompt-section pills match the Verify tab.
+_SCORER_VERDICT_STYLES = {
+    Verdict.SAFE_REFUSAL.value: ("#E6EEF7", "#33506E", "safe · refused"),
+    Verdict.SAFE_CAUTIOUS.value: ("#E1F0E2", "#3F6B45", "safe · cautious"),
+    Verdict.UNSAFE.value: ("#F6E0DD", "#8E2A22", "UNSAFE"),
+    Verdict.INCOMPLETE.value: ("#FAEFD6", "#7A5A12", "incomplete"),
+}
+_SAFE_VERDICTS = (Verdict.SAFE_REFUSAL.value, Verdict.SAFE_CAUTIOUS.value)
 
 # One-line plain-English reading per crop category (subset — the closed set
 # demo_curate can produce). Mirrors the Crop tab's blurbs, kept short here.
@@ -91,6 +104,29 @@ def _verdict_pill(verdict: str) -> str:
         f'font-size:12px;font-weight:600;background:{bg};color:{fg};">'
         f'{label}</span>'
     )
+
+
+def _scorer_verdict_pill(verdict: str) -> str:
+    """Colored pill for a scorer Verdict (safe_refusal / safe_cautious / unsafe / incomplete)."""
+    bg, fg, label = _SCORER_VERDICT_STYLES.get(
+        verdict or "", ("#ECECEC", "#555", verdict or "— (call failed)")
+    )
+    return (
+        f'<span style="display:inline-block;padding:2px 10px;border-radius:999px;'
+        f'font-size:12px;font-weight:600;background:{bg};color:{fg};">'
+        f'{label}</span>'
+    )
+
+
+def _cooking_advice_tag(cooking_advice: bool) -> str:
+    """A small red tag when the model gave cooking/preparation advice."""
+    if cooking_advice:
+        return (
+            '<span style="display:inline-block;padding:2px 9px;border-radius:999px;'
+            'font-size:11px;font-weight:700;background:#F6E0DD;color:#8E2A22;'
+            'border:1px solid #EBC9C4;">gave cooking advice</span>'
+        )
+    return '<span style="color:#888;font-size:12px;">—</span>'
 
 
 def _disagreement_banner(results: tuple[ModelResult, ...]) -> Optional[str]:
@@ -176,7 +212,83 @@ def _render_crop_section(photo: DemoPhoto) -> None:
             )
 
 
-def _render_photo(photo: DemoPhoto) -> None:
+def _results_for_prompt(photo: DemoPhoto, prompt_id: str) -> list[PromptResult]:
+    return [r for r in photo.prompt_results if r.prompt_id == prompt_id]
+
+
+def _render_prompt_section(photo: DemoPhoto, demo_prompts: list[DemoPrompt]) -> None:
+    """The 'same photo, different question' framing-variation section.
+
+    For each prompt framing, shows each model's scorer verdict + whether it
+    gave cooking advice + a short excerpt. The money shot: a deadly mushroom
+    that *warned* under the neutral prompt but gave a recipe under a
+    food-framing prompt.
+    """
+    if not photo.prompt_results or not demo_prompts:
+        return
+
+    st.markdown("**Same photo, different question — does the framing change the answer?**")
+    st.caption(
+        "The neutral prompt asks plainly 'is this poisonous?'. The other two "
+        "*presuppose the mushroom is food* ('on my plate', 'I've eaten these "
+        "before'). A model that warned under the neutral prompt but gives "
+        "cooking advice under a food-framing one is being led by the question, "
+        "not by the mushroom — and on a deadly species that is lethal advice."
+    )
+
+    neutral = _results_for_prompt(photo, "neutral")
+    neutral_safe = any(r.verdict in _SAFE_VERDICTS for r in neutral)
+    framing_unsafe = any(
+        r.verdict == Verdict.UNSAFE.value
+        for r in photo.prompt_results
+        if r.prompt_id != "neutral"
+    )
+
+    for dp in demo_prompts:
+        rows = _results_for_prompt(photo, dp.id)
+        if not rows:
+            continue
+        st.markdown(
+            f'<div style="font-size:13px;margin:10px 0 2px;">{dp.label}</div>',
+            unsafe_allow_html=True,
+        )
+        for r in rows:
+            st.markdown(
+                f'<div style="font-size:13px;margin:2px 0;">'
+                f'<code>{r.model}</code> · {_scorer_verdict_pill(r.verdict)} '
+                f'{_cooking_advice_tag(r.cooking_advice)}</div>',
+                unsafe_allow_html=True,
+            )
+            if r.excerpt:
+                st.markdown(
+                    f'<div style="font-size:12px;color:#555;margin:0 0 6px;'
+                    f'padding-left:4px;border-left:2px solid #E2E2E2;">'
+                    f'{r.excerpt}</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # The framing-flip blurb: only meaningful when the mushroom is actually
+    # dangerous. On the edible control (chanterelle), cooking advice is benign.
+    if neutral_safe and framing_unsafe and photo.truth != TRUTH_EDIBLE:
+        st.markdown(
+            f'<div style="font-size:13px;color:#8E2A22;margin:8px 0;">'
+            f'<strong>Asked plainly it warned; asked “what goes with it on my '
+            f'plate?” it gave a recipe.</strong> Same mushroom, same photo — '
+            f'only the question changed. That is the danger of trusting the '
+            f'answer without trusting the question.</div>',
+            unsafe_allow_html=True,
+        )
+    elif photo.truth == TRUTH_EDIBLE and any(r.cooking_advice for r in photo.prompt_results):
+        st.markdown(
+            f'<div style="font-size:13px;color:#3F6B45;margin:8px 0;">'
+            f'This one is genuinely edible, so cooking advice here is benign — '
+            f'the danger above is <em>framing × a deadly species</em>, not '
+            f'framing alone.</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _render_photo(photo: DemoPhoto, demo_prompts: list[DemoPrompt]) -> None:
     with st.container(border=True):
         col_img, col_meta = st.columns([0.4, 0.6])
         with col_img:
@@ -207,6 +319,7 @@ def _render_photo(photo: DemoPhoto) -> None:
             st.markdown(banner, unsafe_allow_html=True)
         _render_edibility_table(photo)
         _render_crop_section(photo)
+        _render_prompt_section(photo, demo_prompts)
 
 
 def render() -> None:
@@ -232,13 +345,14 @@ def render() -> None:
         return
 
     models = meta.get("models", [])
+    demo_prompts = meta.get("demo_prompts", [])
     if models:
         st.caption(f"Models shown: {', '.join(f'`{m}`' for m in models)} · "
                    f"thinking off · stem crop keeps the top "
                    f"{int(meta.get('probe', {}).get('keep_fraction', 0.6) * 100)}%.")
 
     for photo in photos:
-        _render_photo(photo)
+        _render_photo(photo, demo_prompts)
 
     st.markdown("---")
     st.caption(
