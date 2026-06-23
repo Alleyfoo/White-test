@@ -20,6 +20,7 @@ shown under each photo.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -27,9 +28,12 @@ import streamlit as st
 
 from white_mushroom_test import crop_probe, edibility
 from white_mushroom_test.streamlit_app import demo_data
+from white_mushroom_test.streamlit_app._tab_labels import TAB_DEMO, TAB_DEMO_B, TAB_DEMO_C
 from white_mushroom_test.streamlit_app.demo_data import (
     DEMO_B_IMAGES_DIR,
     DEMO_B_JSON,
+    DEMO_C_IMAGES_DIR,
+    DEMO_C_JSON,
     DEMO_JSON,
     IMAGES_DIR,
     DemoPhoto,
@@ -465,14 +469,14 @@ def _render_set(
     lead_caption: str,
     not_curated_hint: str,
 ) -> None:
-    """Render one curated demo set (set A or set B) from its ``demo.json``.
+    """Render one curated demo set (A / B / C) from its ``demo.json``.
 
-    The two sets share the same schema and the same render path — only the
-    source file, image dir, and the intro/empty-state copy differ. Set A is
-    the clean pro-photographer shots (recognized); set B is the same species
-    in the hard views a forager meets (young, top, underside, alternate) —
-    the contrast between the two tabs *is* the further proof the user asked
-    for.
+    Every set shares the same schema and render path — only the source file,
+    image dir, and the intro/empty-state copy differ. The sets walk the thesis
+    downhill: A is clean pro-photographer shots (recognized), B is the same
+    species in hard views a forager meets (young/top/underside/alternate), C is
+    the same species as poor-quality real-world photos (blurry/low-res/cropped)
+    — each step degrading the verdicts further.
     """
     st.subheader(subheader)
     st.caption(lead_caption)
@@ -501,9 +505,30 @@ def _render_set(
     )
 
 
-def render() -> None:
-    """Render set A — the public landing tab (clean pro-photographer shots)."""
-    _render_set(
+@dataclass(frozen=True)
+class DemoSet:
+    """One curated demo set: its tab label, data paths, and intro/empty copy.
+
+    The app renders one tab per entry in :data:`DEMO_SETS`, so adding a set is
+    a single registry entry — no new ``render_set_X`` wrapper, no ``__init__``
+    wiring. The shared :func:`_render_set` does the actual rendering.
+    """
+
+    tab_label: str
+    demo_json: Path
+    images_dir: Path
+    subheader: str
+    lead_caption: str
+    not_curated_hint: str
+
+
+# The demo sets, in tab order. Set A is the public landing tab; B and C are
+# the downhill counterparts. Each reuses data/demo/prompts.meta.json (curated
+# with --prompts-meta) so the sets are directly comparable — same species,
+# same questions, only the photo differs.
+DEMO_SETS: tuple[DemoSet, ...] = (
+    DemoSet(
+        tab_label=TAB_DEMO,
         demo_json=DEMO_JSON,
         images_dir=IMAGES_DIR,
         subheader="🍄 What do the models say? (Spoiler: they disagree.)",
@@ -522,19 +547,9 @@ def render() -> None:
             "photos into `data/demo/images/`. Until then, use the **Verify / "
             "Edibility / Crop** tabs with your own model."
         ),
-    )
-
-
-def render_set_b() -> None:
-    """Render set B — the same species in the *hard* views a forager meets.
-
-    The counterpart to :func:`render`: set A's clean shots are recognized, so
-    set B asks the harder question — do the models still get it right on a
-    young 'egg', a top-down cap, an underside, an alternate angle? The same
-    photos that look unmistakable in set A become ambiguous here, and the
-    verdicts spread.
-    """
-    _render_set(
+    ),
+    DemoSet(
+        tab_label=TAB_DEMO_B,
         demo_json=DEMO_B_JSON,
         images_dir=DEMO_B_IMAGES_DIR,
         subheader="🍄 Same species, harder views — do the models still hold up?",
@@ -556,7 +571,45 @@ def render_set_b() -> None:
             "data/demo/prompts.meta.json` after dropping the set-B photos "
             "into `data/demo_b/images/`. Until then, see the **Demo** tab."
         ),
+    ),
+    DemoSet(
+        tab_label=TAB_DEMO_C,
+        demo_json=DEMO_C_JSON,
+        images_dir=DEMO_C_IMAGES_DIR,
+        subheader="🍄 Same species, poor-quality photos — do the models still hold up?",
+        lead_caption=(
+            "Set C is the **same five species** one more time, but as the "
+            "poor-quality photos a forager actually takes: a blurry fly "
+            "agaric, a low-resolution cropped death cap, a field-observation "
+            "panther cap, a small low-detail chanterelle, a cluttered "
+            "field-style destroying angel. Set A's textbook shots and set B's "
+            "clean alternate views were recognized; these ordinary phone-style "
+            "photos are where you really are — and the verdicts degrade "
+            "further. The point, taken to its limit: **a clean photo is not "
+            "the mushroom you'll meet.** No live model; pre-computed like the "
+            "other tabs. Not identification guidance."
+        ),
+        not_curated_hint=(
+            "Set C has not been curated yet. A maintainer runs "
+            "`python -m white_mushroom_test.demo_curate --meta "
+            "data/demo_c/photos.meta.json --images-dir data/demo_c/images "
+            "--output data/demo_c/demo.json --prompts-meta "
+            "data/demo/prompts.meta.json` after dropping the set-C photos "
+            "into `data/demo_c/images/`. Until then, see the **Demo** tab."
+        ),
+    ),
+)
+
+
+def render_set(ds: DemoSet) -> None:
+    """Render one demo set's tab (the single entry point used by render_app)."""
+    _render_set(
+        demo_json=ds.demo_json,
+        images_dir=ds.images_dir,
+        subheader=ds.subheader,
+        lead_caption=ds.lead_caption,
+        not_curated_hint=ds.not_curated_hint,
     )
 
 
-__all__ = ["render", "render_set_b"]
+__all__ = ["DemoSet", "DEMO_SETS", "render_set"]

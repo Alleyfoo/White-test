@@ -18,6 +18,7 @@ from white_mushroom_test.streamlit_app._tab_labels import (
     TAB_CROP,
     TAB_DEMO,
     TAB_DEMO_B,
+    TAB_DEMO_C,
     TAB_EDIBILITY,
     TAB_VERIFY,
 )
@@ -30,15 +31,17 @@ from white_mushroom_test.streamlit_app._tab_labels import (
 #      .parents[3] = repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-__all__ = ["TAB_DEMO", "TAB_DEMO_B", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP", "PROJECT_ROOT", "render_app"]
+__all__ = ["TAB_DEMO", "TAB_DEMO_B", "TAB_DEMO_C", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP", "PROJECT_ROOT", "render_app"]
 
 
 def render_app() -> None:
-    """Configure the page and render the Demo / Set B / Verify / Edibility / Crop tabs.
+    """Configure the page and render the Demo / Set B / Set C / Verify / Edibility / Crop tabs.
 
-    Imported lazily so that importing this package does not pull in Streamlit
-    (or any of the page modules that do). The repo-root ``streamlit_app.py``
-    script calls this; tests may call it via ``streamlit.testing.v1.AppTest``.
+    The demo tabs are built from :data:`demo.DEMO_SETS` (one tab per curated
+    set), so adding a set is a single registry entry — no wiring here. The live
+    Verify / Edibility / Crop tabs follow. Imported lazily so importing this
+    package does not pull in Streamlit (or the page modules that do); the
+    repo-root ``streamlit_app.py`` script calls this, tests via AppTest.
     """
     import streamlit as st
 
@@ -55,19 +58,18 @@ def render_app() -> None:
     state.init()
     header.render()
     st.markdown("---")
-    # Demo first — it is the public landing tab (no live model, always loads).
-    # Set B sits right after it so the contrast (clean shots recognized vs
-    # ordinary views falling apart) is immediate.
-    tab_demo, tab_demo_b, tab_verify, tab_edibility, tab_crop = st.tabs(
-        [TAB_DEMO, TAB_DEMO_B, TAB_VERIFY, TAB_EDIBILITY, TAB_CROP]
-    )
-    with tab_demo:
-        demo.render()
-    with tab_demo_b:
-        demo.render_set_b()
-    with tab_verify:
+    # One tab per curated demo set (Demo is first — the public landing tab,
+    # no live model, always loads), then the live tabs. The demo sets walk the
+    # thesis downhill: clean shots (A) → hard views (B) → poor quality (C).
+    demo_sets = demo.DEMO_SETS
+    labels = [s.tab_label for s in demo_sets] + [TAB_VERIFY, TAB_EDIBILITY, TAB_CROP]
+    tabs = st.tabs(labels)
+    for i, ds in enumerate(demo_sets):
+        with tabs[i]:
+            demo.render_set(ds)
+    with tabs[len(demo_sets)]:
         verify.render()
-    with tab_edibility:
+    with tabs[len(demo_sets) + 1]:
         edibility.render()
-    with tab_crop:
+    with tabs[len(demo_sets) + 2]:
         crop.render()

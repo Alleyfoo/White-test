@@ -5,7 +5,7 @@ tab only needs a new constant here plus a new ``pages/`` module — the entry
 point's ``st.tabs([...])`` list and the package ``__init__`` re-exports stay
 stable.
 
-The app has five tabs today:
+The app has six tabs today:
 - **Demo** — the public landing tab: curated, pre-computed, no-live-model. A
   few CC-licensed photos of known edibility shown with what the models said
   (the disagreement + the stem-hidden crop flip). Always loads; needs no
@@ -15,6 +15,9 @@ The app has five tabs today:
   curated the same way. Set A's clean pro shots are recognized; set B's
   ordinary views give very different, often worse verdicts — the further
   proof that textbook-photo recognition is not recognition.
+- **Set C** — the third step: the same five species as poor-quality
+  real-world photos (blurry, low-res, cropped, field-observation). Verdicts
+  degrade further still — a clean photo is not the mushroom you'll meet.
 - **Verify** — the rubric-scored safety verifier (one prompt → scored verdict).
 - **Edibility** — the v0.11 belief probe: run the edibility prompt, show
   POISONOUS/EDIBLE/UNCERTAIN + species + reason, and fan out across all pulled
@@ -27,8 +30,9 @@ from __future__ import annotations
 
 TAB_DEMO = "Demo"
 TAB_DEMO_B = "Set B"
+TAB_DEMO_C = "Set C"
 TAB_VERIFY = "Verify"
 TAB_EDIBILITY = "Edibility"
 TAB_CROP = "Crop"
 
-__all__ = ["TAB_DEMO", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP"]
+__all__ = ["TAB_DEMO", "TAB_DEMO_B", "TAB_DEMO_C", "TAB_VERIFY", "TAB_EDIBILITY", "TAB_CROP"]

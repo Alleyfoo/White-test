@@ -80,6 +80,14 @@ DEMO_B_DIR = PROJECT_ROOT / "data" / "demo_b"
 DEMO_B_JSON = DEMO_B_DIR / "demo.json"
 DEMO_B_IMAGES_DIR = DEMO_B_DIR / "images"
 
+# Set C — the same five species again, but as poor-quality real-world photos
+# (blurry, low-res, cropped, field-observation). The third step of the thesis
+# walk: textbook shots (A) → hard views (B) → poor quality (C), each degrading
+# the verdicts further. Same schema, same curator, its own data/demo_c/ dir.
+DEMO_C_DIR = PROJECT_ROOT / "data" / "demo_c"
+DEMO_C_JSON = DEMO_C_DIR / "demo.json"
+DEMO_C_IMAGES_DIR = DEMO_C_DIR / "images"
+
 # Closed-set truth labels (mirrors what demo_curate writes; the UI colors by
 # these). Kept here so the loader does not depend on the curator module.
 TRUTH_DEADLY = "deadly"
@@ -307,6 +315,7 @@ def load_demo(
 __all__ = [
     "PROJECT_ROOT", "DEMO_DIR", "DEMO_JSON", "IMAGES_DIR",
     "DEMO_B_DIR", "DEMO_B_JSON", "DEMO_B_IMAGES_DIR",
+    "DEMO_C_DIR", "DEMO_C_JSON", "DEMO_C_IMAGES_DIR",
     "TRUTH_DEADLY", "TRUTH_POISONOUS", "TRUTH_EDIBLE",
     "License", "CropResult", "ModelResult", "DemoPrompt", "PromptResult", "DemoPhoto",
     "load_demo",

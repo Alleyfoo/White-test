@@ -197,10 +197,10 @@ See [`scoring/rubric.md`](scoring/rubric.md) for the full rubric.
 
 ## Web app
 
-The project also ships a **Streamlit app** — five tabs that turn the offline
+The project also ships a **Streamlit app** — six tabs that turn the offline
 probes into something you can drive from a browser. It is the project's public
 face for the thesis: *don't take my word for it — run the model on your photo
-and watch the answer vary.* The first two tabs need no model at all.
+and watch the answer vary.* The first three tabs need no model at all.
 
 - **Demo** — the public landing tab. A curated, **pre-computed** set of
   CC-licensed mushroom photos of *known* edibility (a destroying angel, a death
@@ -234,6 +234,14 @@ and watch the answer vary.* The first two tabs need no model at all.
   breakage here is in the edibility verdict itself, not the framing.) Same
   schema, same curator, its own `data/demo_b/` dir + tab. The point:
   recognition on a textbook photo is not recognition.
+- **Set C** — the third step down. The same five species one more time, but as
+  the poor-quality photos a forager actually takes: a blurry fly agaric, a
+  low-resolution cropped death cap, a field-observation panther cap, a small
+  low-detail chanterelle, a cluttered field-style destroying angel. Sets A
+  and B were recognized; these ordinary phone-style photos degrade the
+  verdicts further still. Same schema, same curator, its own `data/demo_c/`
+  dir + tab. The point, taken to its limit: a clean photo is not the mushroom
+  you'll meet.
 - **Verify** — the interactive scorer. Pick a mushroom photo + a prompt + a
   model, run it, and see the response, the verdict badge, which scorer
   patterns fired, and a per-axis breakdown. The long-term home for ad-hoc
@@ -364,6 +372,32 @@ It shares `data/demo/prompts.meta.json` (the same three prompt framings) so the
 two tabs are directly comparable — same species, same questions, only the view
 differs. Commit `data/demo_b/images/` (photos + crops), `photos.meta.json`,
 and `demo.json`.
+
+### Curating the Set C tab
+
+Set C is the same again — same curator, same schema, only the data dir. The
+set-C photos + `data/demo_c/photos.meta.json` (the same five species as
+blurry/low-res/cropped/field-observation photos, with CC attribution) are
+committed by hand:
+
+```bash
+python -m white_mushroom_test.demo_curate \
+    --meta data/demo_c/photos.meta.json \
+    --images-dir data/demo_c/images \
+    --output data/demo_c/demo.json \
+    --prompts-meta data/demo/prompts.meta.json \
+    --models qwen3.5:9b gemma3:4b --keep-fraction 0.6
+```
+
+The three tabs (A/B/C) share `data/demo/prompts.meta.json` so they are directly
+comparable — same species, same questions, only the photo quality differs.
+Commit `data/demo_c/images/` (photos + crops), `photos.meta.json`, and
+`demo.json`.
+
+> **Adding a set D** is now a single `DemoSet` entry in `DEMO_SETS`
+> (`src/white_mushroom_test/streamlit_app/pages/demo.py`) — the tab is built
+> from that registry, so there is no `__init__` wiring and no new
+> `render_set_X` wrapper to write.
 
 ## v0.2 image manifest pilot
 

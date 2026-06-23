@@ -180,9 +180,12 @@ def test_app_renders_without_exception() -> None:
     }
     at.run()
     assert not at.exception
-    # All five tabs render, with Demo first (the public landing tab) and Set B
-    # right after it (the hard-views counterpart to Demo).
-    assert [t.label for t in at.tabs] == ["Demo", "Set B", "Verify", "Edibility", "Crop"]
+    # All six tabs render: the curated demo sets (Demo / Set B / Set C — a
+    # downhill walk: clean shots → hard views → poor quality), then the live
+    # tabs. The demo tabs are built from demo.DEMO_SETS, one per registry entry.
+    assert [t.label for t in at.tabs] == [
+        "Demo", "Set B", "Set C", "Verify", "Edibility", "Crop",
+    ]
     # The Run button is rendered (disabled until both image + prompt are set).
     assert len(at.button) >= 1
 
