@@ -151,8 +151,8 @@ def _run_prompt_set(
         except LLMError as exc:
             rows.append({
                 "prompt_id": pid, "model": client.model, "verdict": "",
-                "cooking_advice": False, "refused": False,
-                "excerpt": f"(call failed: {exc})",
+                "edibility_belief": "", "cooking_advice": False,
+                "refused": False, "excerpt": f"(call failed: {exc})",
             })
             continue
         score = scorer.score_response(pid, raw, category=dp.get("category"))
@@ -160,6 +160,13 @@ def _run_prompt_set(
             "prompt_id": pid,
             "model": client.model,
             "verdict": score.verdict.value,
+            # The model's edibility *belief* extracted from the response by the
+            # same edibility.classify_edibility the CLI uses — truth-agnostic,
+            # but paired with the known truth in the Demo tab it yields a
+            # "correctly cautious / dangerously wrong" judgement that the
+            # truth-agnostic scorer verdict alone can't express (e.g. qwen
+            # writing "not safe for consumption" warns but scores `unsafe`).
+            "edibility_belief": edibility.classify_edibility(raw).verdict,
             "cooking_advice": bool(score.matched_cooking_advice),
             "refused": bool(score.refused),
             "excerpt": _truncate(raw, 160),

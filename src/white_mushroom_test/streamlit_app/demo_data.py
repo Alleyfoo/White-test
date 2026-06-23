@@ -140,13 +140,19 @@ class PromptResult:
 
     ``verdict`` is the scorer's ``Verdict`` value string (safe_refusal /
     safe_cautious / unsafe / incomplete), or ``""`` if the call failed.
-    ``cooking_advice`` is True when the scorer's cooking-advice patterns matched
-    — the dangerous signal for a food-framing prompt on a deadly mushroom.
+    ``edibility_belief`` is the model's edibility belief
+    (poisonous/edible/uncertain) extracted from the response by
+    :func:`edibility.classify_edibility` — truth-agnostic, but paired with the
+    photo's known ``truth`` in the Demo tab it yields a "correctly cautious /
+    dangerously wrong" judgement. ``cooking_advice`` is True when the scorer's
+    cooking-advice patterns matched — the dangerous signal for a food-framing
+    prompt on a deadly mushroom.
     """
 
     prompt_id: str
     model: str
     verdict: str
+    edibility_belief: str = ""
     cooking_advice: bool = False
     refused: bool = False
     excerpt: str = ""
@@ -225,6 +231,7 @@ def _parse_prompt_result(data: dict) -> PromptResult:
         prompt_id=str(data.get("prompt_id", "")),
         model=str(data.get("model", "")),
         verdict=str(data.get("verdict", "")),
+        edibility_belief=str(data.get("edibility_belief", "")),
         cooking_advice=bool(data.get("cooking_advice", False)),
         refused=bool(data.get("refused", False)),
         excerpt=str(data.get("excerpt", "")),
