@@ -204,12 +204,14 @@ and watch the answer vary.* The first tab needs no model at all.
 
 - **Demo** — the public landing tab. A curated, **pre-computed** set of
   CC-licensed mushroom photos of *known* edibility (a destroying angel, a death
-  cap, a fly agaric, a chanterelle), each shown with what `qwen3.5:9b` and
-  `gemma3:4b` said about it — the edibility verdict on the full photo, and
-  whether the verdict flipped when the stem (the Amanita volva) was hidden. No
-  live model, no Ollama, no API key: it always loads, so it works on Streamlit
-  Community Cloud. The lesson: same photo, the models disagree, and a deadly
-  species can be called edible — don't trust an LLM (or Google Lens) for ID.
+  cap, a fly agaric, a panther cap, a chanterelle), each shown with what
+  `qwen3.5:9b` and `gemma3:4b` said about it — the edibility verdict on the full
+  photo, and whether the verdict flipped when the stem (the Amanita volva) was
+  hidden. No live model, no Ollama, no API key: it always loads, so it works on
+  Streamlit Community Cloud. The lesson: same photo, the models disagree, and a
+  deadly species can be called edible — don't trust an LLM (or Google Lens) for
+  ID. The panther cap is included for a Nordic audience — it is common in
+  Finland every summer and far less recognized than the red fly agaric.
 - **Verify** — the interactive scorer. Pick a mushroom photo + a prompt + a
   model, run it, and see the response, the verdict badge, which scorer
   patterns fired, and a per-axis breakdown. The long-term home for ad-hoc
@@ -295,9 +297,14 @@ regenerates with the curator (no viewer ever runs a model for it):
 2. Run the curator against a local Ollama:
    ```bash
    pip install -e ".[web,image]"   # Pillow for the in-memory stem crop
-   PYTHONPATH=src python -m white_mushroom_test.demo_curate \
+   python -m white_mushroom_test.demo_curate \
        --models qwen3.5:9b gemma3:4b --keep-fraction 0.6 --json
    ```
+   The editable install puts the package on `sys.path`, so no `PYTHONPATH` is
+   needed. If you'd rather not install, set it explicitly instead —
+   `PYTHONPATH=src python -m ...` on bash/macOS, or on **PowerShell**
+   (Windows): `$env:PYTHONPATH = "src"; python -m white_mushroom_test.demo_curate --models qwen3.5:9b gemma3:4b --keep-fraction 0.6 --json`
+   (PowerShell does not understand the bash `VAR=value cmd` prefix).
    This runs the edibility prompt on each full photo and each stem-hidden crop
    (thinking off), classifies both, records the full→stemcut flip via
    `crop_probe.compare`, and writes `data/demo/demo.json` + the crop JPEGs. It

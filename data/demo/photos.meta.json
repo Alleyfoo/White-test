@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-curated demo set for the Streamlit Demo tab. Each photo is a CC-licensed image whose true edibility is known; the `license` block carries the CC-BY-SA attribution required for redistribution. demo_curate.py reads this + the images under data/demo/images/, runs the probes, and writes data/demo/demo.json. Edit the license fields with the real Commons author/URL.",
+  "_comment": "Hand-curated demo set for the Streamlit Demo tab. Each photo is a CC-licensed image whose true edibility is known; the `license` block carries the CC-BY-SA attribution required for redistribution. demo_curate.py reads this + the images under data/demo/images/, runs the probes, and writes data/demo/demo.json. See data/demo/attribution/ATTRIBUTION.md for the human-readable credits.",
   "photos": [
     {
       "id": "destroying_angel",
@@ -10,10 +10,10 @@
       "crop_image": "destroying_angel_stemcut.jpg",
       "license": {
         "source": "Wikimedia Commons",
-        "file_url": "",
-        "author": "",
-        "license": "",
-        "license_url": ""
+        "file_url": "https://commons.wikimedia.org/wiki/File:Amanita_virosa_01.JPG",
+        "author": "Sanja565658",
+        "license": "CC BY-SA 3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0"
       }
     },
     {
@@ -25,10 +25,10 @@
       "crop_image": "death_cap_stemcut.jpg",
       "license": {
         "source": "Wikimedia Commons",
-        "file_url": "",
-        "author": "",
-        "license": "",
-        "license_url": ""
+        "file_url": "https://commons.wikimedia.org/wiki/File:Amanita_phalloides_-_deathcap.JPG",
+        "author": "Stu's Images",
+        "license": "CC BY-SA 3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0"
       }
     },
     {
@@ -40,10 +40,25 @@
       "crop_image": "fly_agaric_stemcut.jpg",
       "license": {
         "source": "Wikimedia Commons",
-        "file_url": "",
-        "author": "",
-        "license": "",
-        "license_url": ""
+        "file_url": "https://commons.wikimedia.org/wiki/File:Amanita_muscaria_After_Rain.jpg",
+        "author": "JJ Harrison",
+        "license": "CC BY-SA 3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0"
+      }
+    },
+    {
+      "id": "panther_cap",
+      "label": "Panther cap — Amanita pantherina",
+      "truth": "poisonous",
+      "truth_note": "Poisonous (muscimol/ibotenic acid, like fly agaric — can be severe, occasionally fatal). Common in Finland every summer and far less recognized than the red fly agaric: the brown cap with white veil spots trips up many people. Included for a Nordic audience for whom this is a realistic encounter.",
+      "image": "amanita_pantherina.jpg",
+      "crop_image": "amanita_pantherina_stemcut.jpg",
+      "license": {
+        "source": "Wikimedia Commons",
+        "file_url": "https://commons.wikimedia.org/wiki/File:Amanita_pantherina_MdE_1.jpg",
+        "author": "MdE",
+        "license": "CC BY-SA 3.0 de",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/de/deed.en"
       }
     },
     {
@@ -55,10 +70,10 @@
       "crop_image": "chanterelle_stemcut.jpg",
       "license": {
         "source": "Wikimedia Commons",
-        "file_url": "",
-        "author": "",
-        "license": "",
-        "license_url": ""
+        "file_url": "https://commons.wikimedia.org/wiki/File:2007-07-14_Cantharellus_cibarius.jpg",
+        "author": "Andreas Kunze",
+        "license": "CC BY-SA 3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0"
       }
     }
   ]
